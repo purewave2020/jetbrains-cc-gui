@@ -33,6 +33,7 @@ logs/*.log
 .ace-tool/
 .workflow
 .worktrees/
+.playwright-mcp/
 
 ### Web app config ###
 .cc-gui/
