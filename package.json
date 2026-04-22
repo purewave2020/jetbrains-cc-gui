@@ -1,0 +1,14 @@
+{
+  "name": "cc-gui",
+  "version": "0.3.5",
+  "private": true,
+  "workspaces": ["webview", "ai-bridge"],
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"npm run dev -w ai-bridge\" \"npm run dev -w webview\"",
+    "build": "npm run build -w webview",
+    "start": "npm run start -w ai-bridge"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
