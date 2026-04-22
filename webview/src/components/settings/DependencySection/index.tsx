@@ -18,14 +18,19 @@ import {
 } from './versioning';
 import styles from './style.module.less';
 
+import { sendBridgeEvent } from '../../../utils/bridge';
+
 interface DependencySectionProps {
   addToast?: (message: string, type: 'info' | 'success' | 'warning' | 'error') => void;
   isActive: boolean;
 }
 
 const sendToJava = (message: string) => {
-  if (window.sendToJava) {
-    window.sendToJava(message);
+  const colonIdx = message.indexOf(':');
+  if (colonIdx === -1) {
+    sendBridgeEvent(message);
+  } else {
+    sendBridgeEvent(message.substring(0, colonIdx), message.substring(colonIdx + 1));
   }
 };
 

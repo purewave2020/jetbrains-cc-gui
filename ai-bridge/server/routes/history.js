@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { readdir, readFile, stat, unlink } from 'fs/promises';
-import { join, homedir } from 'path';
+import { join } from 'path';
+import { homedir } from 'os';
 import { existsSync } from 'fs';
 
 const router = Router();

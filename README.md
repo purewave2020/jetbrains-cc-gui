@@ -17,7 +17,7 @@
 > To mitigate Claude trademark risks, this project has been renamed to CC GUI (originally Claude Code GUI). The logo has also been updated to reduce Chinese-specific elements. Regarding security, a        
   /security-review audit will be conducted before each minor version release, and a comprehensive claude-code-security audit will be performed every 10 minor versions. 
 
-A powerful IntelliJ IDEA plugin that provides a visual interface for **Claude Code** and **OpenAI Codex** dual AI tools, making AI-assisted programming more efficient and intuitive.
+A standalone web application that provides a visual interface for **Claude Code** and **OpenAI Codex** dual AI tools, making AI-assisted programming more efficient and intuitive.
 
 <img width="850" alt="Image" src="/docs/img/banner.png" />
 
@@ -25,7 +25,38 @@ A powerful IntelliJ IDEA plugin that provides a visual interface for **Claude Co
 
 ## Installation
 
-[CC GUI（Claude or Codex） Installation](https://plugins.jetbrains.com/plugin/29342-cc-gui-claude-or-codex-)
+### Prerequisites
+
+- Node.js 18+
+
+### Quick Start
+
+```bash
+# Install all dependencies (monorepo)
+npm install
+
+# Start development server (frontend + backend concurrently)
+npm run dev
+```
+
+The app will be available at:
+- Frontend (Vite dev): http://localhost:5173
+- Backend API: http://localhost:3001
+- WebSocket: ws://localhost:3001/api/chat
+
+### Production Build
+
+```bash
+# Build frontend
+npm run build
+
+# Start production server (serves static frontend + API)
+npm start
+```
+
+### Configuration
+
+Settings are stored in `~/.cc-gui/settings.json`. The app auto-creates defaults on first run.
 
 ---
 
@@ -79,33 +110,29 @@ For contributing guidelines, please read [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## Local Development and Debugging
 
-### 1. Install Frontend Dependencies
+### 1. Install Dependencies
 
 ```bash
-cd webview
+# From project root (installs both webview and ai-bridge)
 npm install
 ```
 
-### 2. Install ai-bridge Dependencies
+### 2. Start Development
 
 ```bash
-cd ai-bridge
-npm install
+# Start both frontend and backend concurrently
+npm run dev
+
+# Or start them individually:
+npm run dev -w webview    # Frontend only (Vite dev server)
+npm run dev -w ai-bridge  # Backend only (Express + WebSocket)
 ```
 
-### 3. Debug Plugin
+### 3. Build for Production
 
-Run in IDEA:
 ```bash
-./gradlew clean runIde
-```
-
-### 4. Build Plugin
-
-```sh
-./gradlew clean buildPlugin
-
-# The generated plugin package will be in the build/distributions/ directory (package size approximately 40MB)
+npm run build             # Build frontend to webview/dist/
+npm start                 # Start production server (serves from webview/dist/)
 ```
 
 ---

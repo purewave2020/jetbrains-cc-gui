@@ -7,7 +7,7 @@ import './i18n/config';
 import i18n from './i18n/config';
 import { setupSlashCommandsCallback } from './components/ChatInputBox/providers/slashCommandProvider';
 import { setupDollarCommandsCallback } from './components/ChatInputBox/providers/dollarCommandProvider';
-import { sendBridgeEvent } from './utils/bridge';
+import { sendBridgeEvent, initWebBridge, isWebMode } from './utils/bridge';
 
 // Silence console output in production (including third-party libs).
 // In dev, keep console for debugging.
@@ -483,19 +483,30 @@ function waitForBridge(callback: () => void, maxAttempts = 50, interval = 100) {
 }
 
 // Once the bridge is available, initialize slash commands
-waitForBridge(() => {
-  console.log('[Main] Bridge ready, setting up slash commands');
-  setupSlashCommandsCallback();
-  setupDollarCommandsCallback();
-  startBridgeHeartbeat();
+if (isWebMode()) {
+  initWebBridge().then(() => {
+    setupSlashCommandsCallback();
+    setupDollarCommandsCallback();
+    startBridgeHeartbeat();
+    sendBridgeEvent('frontend_ready');
+    sendBridgeEvent('refresh_slash_commands');
+    sendBridgeEvent('get_dependency_status');
+  });
+} else {
+  waitForBridge(() => {
+    console.log('[Main] Bridge ready, setting up slash commands');
+    setupSlashCommandsCallback();
+    setupDollarCommandsCallback();
+    startBridgeHeartbeat();
 
-  console.log('[Main] Sending frontend_ready signal');
-  sendBridgeEvent('frontend_ready');
+    console.log('[Main] Sending frontend_ready signal');
+    sendBridgeEvent('frontend_ready');
 
-  console.log('[Main] Sending refresh_slash_commands request');
-  sendBridgeEvent('refresh_slash_commands');
+    console.log('[Main] Sending refresh_slash_commands request');
+    sendBridgeEvent('refresh_slash_commands');
 
-  // Ensure SDK dependency status is fetched on initial load (not only after opening Settings).
-  console.log('[Main] Requesting dependency status');
-  sendBridgeEvent('get_dependency_status');
-});
+    // Ensure SDK dependency status is fetched on initial load (not only after opening Settings).
+    console.log('[Main] Requesting dependency status');
+    sendBridgeEvent('get_dependency_status');
+  });
+}

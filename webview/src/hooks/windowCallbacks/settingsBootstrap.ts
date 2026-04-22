@@ -8,27 +8,15 @@
 
 import { sendBridgeEvent } from '../../utils/bridge';
 
-const MAX_RETRIES = 30;
-
 /**
- * Fire the three settings queries to the backend.  Retries up to MAX_RETRIES
- * times (at 100 ms intervals) if window.sendToJava is not yet available.
+ * Fire the three settings queries to the backend.
  */
 export const startInitialSettingsRequest = (): void => {
-  let settingsRetryCount = 0;
-  const requestInitialSettings = () => {
-    if (window.sendToJava) {
-      window.sendToJava('get_streaming_enabled:');
-      window.sendToJava('get_send_shortcut:');
-      window.sendToJava('get_auto_open_file_enabled:');
-    } else {
-      settingsRetryCount++;
-      if (settingsRetryCount < MAX_RETRIES) {
-        setTimeout(requestInitialSettings, 100);
-      }
-    }
-  };
-  setTimeout(requestInitialSettings, 200);
+  setTimeout(() => {
+    sendBridgeEvent('get_streaming_enabled');
+    sendBridgeEvent('get_send_shortcut');
+    sendBridgeEvent('get_auto_open_file_enabled');
+  }, 200);
 };
 
 /**
@@ -36,54 +24,27 @@ export const startInitialSettingsRequest = (): void => {
  * available.
  */
 export const startActiveProviderRequest = (): void => {
-  let retryCount = 0;
-  const requestActiveProvider = () => {
-    if (window.sendToJava) {
-      sendBridgeEvent('get_active_provider');
-    } else {
-      retryCount++;
-      if (retryCount < MAX_RETRIES) {
-        setTimeout(requestActiveProvider, 100);
-      }
-    }
-  };
-  setTimeout(requestActiveProvider, 200);
+  setTimeout(() => {
+    sendBridgeEvent('get_active_provider');
+  }, 200);
 };
 
 /**
  * Request the current permission mode from the backend.
  */
 export const startModeRequest = (): void => {
-  let modeRetryCount = 0;
-  const requestMode = () => {
-    if (window.sendToJava) {
-      sendBridgeEvent('get_mode');
-    } else {
-      modeRetryCount++;
-      if (modeRetryCount < MAX_RETRIES) {
-        setTimeout(requestMode, 100);
-      }
-    }
-  };
-  setTimeout(requestMode, 200);
+  setTimeout(() => {
+    sendBridgeEvent('get_mode');
+  }, 200);
 };
 
 /**
  * Request the thinking-enabled setting from the backend.
  */
 export const startThinkingEnabledRequest = (): void => {
-  let thinkingRetryCount = 0;
-  const requestThinkingEnabled = () => {
-    if (window.sendToJava) {
-      sendBridgeEvent('get_thinking_enabled');
-    } else {
-      thinkingRetryCount++;
-      if (thinkingRetryCount < MAX_RETRIES) {
-        setTimeout(requestThinkingEnabled, 100);
-      }
-    }
-  };
-  setTimeout(requestThinkingEnabled, 200);
+  setTimeout(() => {
+    sendBridgeEvent('get_thinking_enabled');
+  }, 200);
 };
 
 /**
@@ -132,7 +93,5 @@ export const drainAndRequestDependencyStatus = (): void => {
     window.updateDependencyStatus?.(pending);
   }
 
-  if (window.sendToJava) {
-    window.sendToJava('get_dependency_status:');
-  }
+  sendBridgeEvent('get_dependency_status');
 };

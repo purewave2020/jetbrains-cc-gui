@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { PromptScope } from '../../../types/prompt';
+import { sendBridgeEvent } from '../../../utils/bridge';
 import { usePromptManagement } from '../hooks/usePromptManagement';
 import { updateGlobalPromptsCache, updateProjectPromptsCache } from '../../ChatInputBox/providers';
 import PromptScopeSection from './PromptScopeSection';
@@ -55,9 +56,7 @@ export default function PromptSection({
   // Load project info and prompts on mount
   useEffect(() => {
     // Load project info first
-    if (window.sendToJava) {
-      window.sendToJava('get_project_info:{}');
-    }
+    sendBridgeEvent('get_project_info', '{}');
     // Then load prompts
     loadAllPrompts();
     return () => cleanupPromptsTimeout();

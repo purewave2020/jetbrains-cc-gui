@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join, homedir } from 'path';
+import { join } from 'path';
+import { homedir } from 'os';
 
 const CONFIG_DIR = join(homedir(), '.cc-gui');
 const CONFIG_FILE = join(CONFIG_DIR, 'settings.json');

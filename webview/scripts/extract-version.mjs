@@ -11,30 +11,37 @@ const __dirname = path.dirname(__filename);
 // Get the project root directory (the parent of webview)
 const projectRoot = path.resolve(__dirname, '../..');
 const buildGradlePath = path.join(projectRoot, 'build.gradle');
+const rootPackageJsonPath = path.join(projectRoot, 'package.json');
 
-// Read the build.gradle file
-const buildGradleContent = fs.readFileSync(buildGradlePath, 'utf8');
+let version;
 
-// Extract the version number
-// Look for a line like: version = '0.1.0-beta3'
-let versionMatch = buildGradleContent.match(/^version\s*=\s*'(.+)'$/m);
-if (!versionMatch) {
-  // If the regex above fails, try a fallback approach
-  const lines = buildGradleContent.split('\n');
-  const versionLine = lines.find(line => line.trim().startsWith('version ='));
-  if (versionLine) {
-    const match = versionLine.match(/version\s*=\s*'(.+)'/);
-    if (match) {
-      versionMatch = match;
+if (fs.existsSync(buildGradlePath)) {
+  // Read version from build.gradle (IntelliJ plugin mode)
+  const buildGradleContent = fs.readFileSync(buildGradlePath, 'utf8');
+  let versionMatch = buildGradleContent.match(/^version\s*=\s*'(.+)'$/m);
+  if (!versionMatch) {
+    const lines = buildGradleContent.split('\n');
+    const versionLine = lines.find(line => line.trim().startsWith('version ='));
+    if (versionLine) {
+      const match = versionLine.match(/version\s*=\s*'(.+)'/);
+      if (match) {
+        versionMatch = match;
+      }
     }
   }
-}
-if (!versionMatch) {
-  console.error('Error: Could not find version in build.gradle');
+  if (!versionMatch) {
+    console.error('Error: Could not find version in build.gradle');
+    process.exit(1);
+  }
+  version = versionMatch[1];
+} else if (fs.existsSync(rootPackageJsonPath)) {
+  // Read version from package.json (web app mode)
+  const pkg = JSON.parse(fs.readFileSync(rootPackageJsonPath, 'utf8'));
+  version = pkg.version || '0.0.0';
+} else {
+  console.error('Error: Could not find version source (build.gradle or package.json)');
   process.exit(1);
 }
-
-const version = versionMatch[1];
 console.log(`Found version: ${version}`);
 
 // Create the version file for the webview

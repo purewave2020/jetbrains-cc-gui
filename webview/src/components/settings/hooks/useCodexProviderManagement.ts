@@ -1,12 +1,15 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { CodexProviderConfig } from '../../../types/provider';
+import { sendBridgeEvent } from '../../../utils/bridge';
 
 const sendToJava = (message: string) => {
-  if (window.sendToJava) {
-    window.sendToJava(message);
+  const colonIdx = message.indexOf(':');
+  if (colonIdx === -1) {
+    sendBridgeEvent(message);
+  } else {
+    sendBridgeEvent(message.substring(0, colonIdx), message.substring(colonIdx + 1));
   }
-  // Silently ignore when sendToJava is unavailable to avoid log pollution in production
 };
 
 export interface CodexProviderDialogState {

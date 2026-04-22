@@ -5,18 +5,15 @@ import { randomUUID } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Active daemon process (shared across all WebSocket connections)
 let daemonProcess = null;
 let daemonReady = false;
-let pendingRequests = new Map(); // id -> { resolve, reject, ws }
+let pendingRequests = new Map();
 let requestIdCounter = 0;
 
 function startDaemon() {
   if (daemonProcess) return;
 
   const daemonPath = join(__dirname, '..', 'daemon.js');
-  console.log('[ws] Starting daemon:', daemonPath);
-
   daemonProcess = spawn(process.execPath, [daemonPath], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env },
@@ -33,68 +30,49 @@ function startDaemon() {
       try {
         const msg = JSON.parse(line);
 
-        // Daemon lifecycle events
         if (msg.type === 'daemon') {
           if (msg.event === 'ready') {
             daemonReady = true;
             console.log('[ws] Daemon ready, SDK preloaded:', msg.sdkPreloaded);
-          } else if (msg.event === 'sdk_loading') {
-            console.log('[ws] SDK loading:', msg.provider);
-          } else if (msg.event === 'sdk_loaded') {
-            console.log('[ws] SDK loaded:', msg.provider);
           }
           continue;
         }
 
-        // Route response to waiting client
         if (msg.id && pendingRequests.has(msg.id)) {
           const { ws, resolve } = pendingRequests.get(msg.id);
 
-          // Stream lines to the WebSocket client
           if (msg.line) {
-            if (ws.readyState === 1) { // WebSocket.OPEN
-              ws.send(JSON.stringify({ type: 'stream_line', id: msg.id, line: msg.line }));
-            }
+            ws.send(JSON.stringify({ type: 'stream_line', id: msg.id, line: msg.line }));
           }
 
-          // Command complete
           if (msg.done) {
-            if (ws.readyState === 1) {
-              ws.send(JSON.stringify({
-                type: msg.success ? 'stream_end' : 'stream_error',
-                id: msg.id,
-                error: msg.error,
-              }));
-            }
+            ws.send(JSON.stringify({
+              type: msg.success ? 'stream_end' : 'stream_error',
+              id: msg.id,
+              error: msg.error,
+            }));
             resolve(msg);
             pendingRequests.delete(msg.id);
           }
         }
       } catch (e) {
-        console.error('[ws] Failed to parse daemon output:', line.substring(0, 200));
+        // Non-JSON lines (daemon debug logs) are safe to skip
       }
     }
   });
 
   daemonProcess.stderr.on('data', (chunk) => {
-    const text = chunk.toString('utf8').trim();
-    if (text) console.error('[daemon stderr]', text);
+    console.error('[daemon stderr]', chunk.toString('utf8').trim());
   });
 
   daemonProcess.on('exit', (code) => {
     console.log('[ws] Daemon exited with code:', code);
     daemonProcess = null;
     daemonReady = false;
-    // Reject all pending requests
-    for (const [id, { reject }] of pendingRequests.entries()) {
-      reject(new Error('Daemon exited'));
-    }
-    pendingRequests.clear();
   });
 }
 
 export function createWsHandler(wss) {
-  // Start daemon on first WS handler creation
   startDaemon();
 
   return {
@@ -102,7 +80,6 @@ export function createWsHandler(wss) {
       console.log('[ws] Client connected from:', request.socket.remoteAddress);
       const clientId = randomUUID();
 
-      // Send connection confirmation
       ws.send(JSON.stringify({
         type: 'connected',
         clientId,
@@ -167,7 +144,6 @@ export function createWsHandler(wss) {
             case 'permission_decision':
             case 'ask_user_question_response':
             case 'plan_approval_response': {
-              // Forward permission/decision responses to daemon via stdin
               if (daemonProcess && daemonReady) {
                 const id = String(++requestIdCounter);
                 const daemonMsg = { id, method: msg.type, params: msg };

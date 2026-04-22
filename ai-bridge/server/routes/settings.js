@@ -17,8 +17,12 @@ router.put('/', (req, res) => {
 // Get active provider
 router.get('/active-provider', (_req, res) => {
   const config = loadConfig();
-  const provider = config.claude?.current || config.codex?.current || '';
-  res.json({ provider });
+  const currentId = config.claude?.current || '';
+  if (currentId && config.claude?.providers?.[currentId]) {
+    res.json({ provider: config.claude.providers[currentId] });
+  } else {
+    res.json({ provider: { id: 'anthropic', name: 'Anthropic', type: 'claude', apiKey: '', baseUrl: '' } });
+  }
 });
 
 // Get permission mode
@@ -132,6 +136,17 @@ router.put('/send-shortcut', (req, res) => {
   const { shortcut } = req.body;
   const updated = updateConfig({ sendShortcut: { default: shortcut } });
   res.json({ shortcut: updated.sendShortcut.default });
+});
+
+// Auto open file
+router.get('/auto-open-file', (_req, res) => {
+  const config = loadConfig();
+  res.json({ enabled: config.autoOpenFile?.default ?? true });
+});
+router.put('/auto-open-file', (req, res) => {
+  const { enabled } = req.body;
+  const updated = updateConfig({ autoOpenFile: { default: enabled } });
+  res.json({ enabled: updated.autoOpenFile.default });
 });
 
 export default router;

@@ -1,3 +1,5 @@
+import { isWebMode, sendBridgeEventHttp, initWebBridge } from './bridge-http';
+
 const BRIDGE_UNAVAILABLE_WARNED = new Set<string>();
 
 /** Regex to detect path traversal: matches ".." as a path segment, not as part of filenames */
@@ -29,6 +31,9 @@ const callBridge = (payload: string) => {
 };
 
 export const sendBridgeEvent = (event: string, content = '') => {
+  if (isWebMode()) {
+    return sendBridgeEventHttp(event, content);
+  }
   return callBridge(`${event}:${content}`);
 };
 
@@ -185,3 +190,6 @@ export const undoFileChanges = (
   }
   sendToJava('undo_file_changes', { filePath, status, operations });
 };
+
+// Re-export web bridge init for main.tsx
+export { initWebBridge, isWebMode };

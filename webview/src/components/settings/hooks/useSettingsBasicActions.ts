@@ -1,9 +1,13 @@
 // hooks/useSettingsBasicActions.ts
 import { useState, useEffect, useCallback } from 'react';
+import { sendBridgeEvent } from '../../../utils/bridge';
 
 const sendToJava = (message: string) => {
-  if (window.sendToJava) {
-    window.sendToJava(message);
+  const colonIdx = message.indexOf(':');
+  if (colonIdx === -1) {
+    sendBridgeEvent(message);
+  } else {
+    sendBridgeEvent(message.substring(0, colonIdx), message.substring(colonIdx + 1));
   }
 };
 

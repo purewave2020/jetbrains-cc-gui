@@ -1,4 +1,5 @@
 import type { ClaudeMessage, ClaudeContentBlock, ToolResultBlock } from '../types';
+import { sendBridgeEvent } from './bridge';
 
 /**
  * Convert a message list to JSON format
@@ -309,13 +310,8 @@ export function downloadJSON(content: string, filename: string): void {
     filename: filename.endsWith('.json') ? filename : `${filename}.json`
   });
 
-  if (window.sendToJava) {
-    window.sendToJava(`save_json:${payload}`);
-  } else {
-    console.error('[Frontend] sendToJava not available, falling back to browser download');
-    // Fallback: use browser download
-    fallbackBrowserDownload(content, filename);
-  }
+  sendBridgeEvent('save_json', payload);
+  fallbackBrowserDownload(content, filename);
 }
 
 /**

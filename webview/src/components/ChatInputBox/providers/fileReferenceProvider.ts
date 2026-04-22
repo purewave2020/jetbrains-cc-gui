@@ -1,7 +1,8 @@
 import type { FileItem, DropdownItemData } from '../types';
 import { getFileIcon, getFolderIcon } from '../../../utils/fileIcons';
 import { icon_terminal, icon_server } from '../../../utils/icons';
-import { debugError, debugLog, debugWarn } from '../../../utils/debug.js';
+import { debugError, debugLog } from '../../../utils/debug.js';
+import { sendBridgeEvent } from '../../../utils/bridge';
 
 // Request queue management
 let pendingResolve: ((files: FileItem[]) => void) | null = null;
@@ -49,11 +50,7 @@ function setupFileListCallback() {
  * Send request to Java
  */
 function sendToJava(event: string, payload: Record<string, unknown>) {
-  if (window.sendToJava) {
-    window.sendToJava(`${event}:${JSON.stringify(payload)}`);
-  } else {
-    debugWarn('[fileReferenceProvider] sendToJava not available');
-  }
+  sendBridgeEvent(event, JSON.stringify(payload));
 }
 
 /**
@@ -160,20 +157,10 @@ export async function fileReferenceProvider(
       reject(new DOMException('Aborted', 'AbortError'));
     });
 
-    // Check if sendToJava is available
-    if (!window.sendToJava) {
-      // Use default file list for local filtering
-      const filtered = filterFiles(DEFAULT_FILES, searchQuery);
-      pendingResolve = null;
-      pendingReject = null;
-      resolve(filtered);
-      return;
-    }
-
     // Send request with current path and search keyword
     sendToJava('list_files', {
-      query: searchQuery,        // Search keyword
-      currentPath: currentPath,  // Current path
+      query: searchQuery,
+      currentPath: currentPath,
     });
 
     // Timeout handling (3 seconds), fall back to default file list on timeout

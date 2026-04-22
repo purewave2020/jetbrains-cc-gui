@@ -162,24 +162,13 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
       setCodexPermissionMode(restoredCodexPermissionMode);
       setPermissionMode(initialPermissionMode);
 
-      let syncRetryCount = 0;
-      const MAX_SYNC_RETRIES = 30;
-
       const syncToBackend = () => {
-        if (window.sendToJava) {
-          sendBridgeEvent('set_provider', restoredProvider);
-          // For Claude, apply [1m] suffix if long context is enabled and model supports it
-          const modelToSync = restoredProvider === 'codex'
-            ? restoredCodexModel
-            : apply1MContextSuffix(restoredClaudeModel, restoredLongContextEnabled);
-          sendBridgeEvent('set_model', modelToSync);
-          sendBridgeEvent('set_mode', initialPermissionMode);
-        } else {
-          syncRetryCount++;
-          if (syncRetryCount < MAX_SYNC_RETRIES) {
-            setTimeout(syncToBackend, 100);
-          }
-        }
+        sendBridgeEvent('set_provider', restoredProvider);
+        const modelToSync = restoredProvider === 'codex'
+          ? restoredCodexModel
+          : apply1MContextSuffix(restoredClaudeModel, restoredLongContextEnabled);
+        sendBridgeEvent('set_model', modelToSync);
+        sendBridgeEvent('set_mode', initialPermissionMode);
       };
       setTimeout(syncToBackend, 200);
     } catch {
@@ -205,19 +194,10 @@ export function useModelProviderState({ addToast, t }: UseModelProviderStateOpti
 
   // Load selected agent
   useEffect(() => {
-    let retryCount = 0;
-    const MAX_RETRIES = 10;
     let timeoutId: number | undefined;
 
     const loadSelectedAgent = () => {
-      if (window.sendToJava) {
-        sendBridgeEvent('get_selected_agent');
-      } else {
-        retryCount++;
-        if (retryCount < MAX_RETRIES) {
-          timeoutId = window.setTimeout(loadSelectedAgent, 100);
-        }
-      }
+      sendBridgeEvent('get_selected_agent');
     };
 
     timeoutId = window.setTimeout(loadSelectedAgent, 200);
