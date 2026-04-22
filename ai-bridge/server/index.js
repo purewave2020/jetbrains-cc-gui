@@ -5,6 +5,9 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { corsMiddleware } from './middleware/cors.js';
 import { createWsHandler } from './ws.js';
+import settingsRouter from './routes/settings.js';
+import sessionsRouter from './routes/sessions.js';
+import historyRouter from './routes/history.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -13,10 +16,10 @@ const app = express();
 app.use(corsMiddleware);
 app.use(express.json());
 
-// API routes (registered in later tasks)
-// app.use('/api/sessions', sessionsRouter);
-// app.use('/api/settings', settingsRouter);
-// app.use('/api/history', historyRouter);
+// API routes
+app.use('/api/settings', settingsRouter);
+app.use('/api/sessions', sessionsRouter);
+app.use('/api/history', historyRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {
