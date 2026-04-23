@@ -1150,15 +1150,18 @@ export const initWebBridge = async () => {
     const w = window as any;
 
     if (line.startsWith('[STREAM_START]')) {
+      console.log('[bridge-http] STREAM_START received, calling onStreamStart');
       w.onStreamStart?.();
     } else if (line.startsWith('[CONTENT_DELTA]')) {
       const delta = line.substring('[CONTENT_DELTA] '.length).trim();
+      let contentDelta: string;
       try {
         const parsed = JSON.parse(delta);
-        w.onContentDelta?.(typeof parsed === 'object' && parsed?.text ? parsed.text : parsed);
+        contentDelta = typeof parsed === 'object' && parsed?.text ? parsed.text : parsed;
       } catch {
-        w.onContentDelta?.(delta);
+        contentDelta = delta;
       }
+      w.onContentDelta?.(contentDelta);
     } else if (line.startsWith('[THINKING_DELTA]')) {
       const delta = line.substring('[THINKING_DELTA] '.length).trim();
       try {
@@ -1168,6 +1171,7 @@ export const initWebBridge = async () => {
         w.onThinkingDelta?.(delta);
       }
     } else if (line.startsWith('[STREAM_END]')) {
+      console.log('[bridge-http] STREAM_END received, calling onStreamEnd');
       w.onStreamEnd?.();
     } else if (line.startsWith('[MESSAGE]')) {
       const json = line.substring('[MESSAGE] '.length).trim();

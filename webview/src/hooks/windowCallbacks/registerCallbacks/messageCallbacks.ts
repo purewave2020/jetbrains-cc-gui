@@ -586,6 +586,7 @@ export function registerMessageCallbacks(
 
   window.addHistoryMessage = (message: ClaudeMessage) => {
     if (window.__sessionTransitioning) return;
+    console.log('[MSG_CB] addHistoryMessage: type=', message.type, 'content=', String(message.content).substring(0, 60), 'isStreaming=', isStreamingRef.current, 'msgIdx=', streamingMessageIndexRef.current);
     setMessages((prev) => {
       // When streaming is active and a daemon [MESSAGE] arrives for the assistant,
       // merge it into the existing streaming assistant message instead of appending
@@ -593,6 +594,7 @@ export function registerMessageCallbacks(
       if (isStreamingRef.current && message.type === 'assistant') {
         const idx = streamingMessageIndexRef.current;
         if (idx >= 0 && idx < prev.length && prev[idx]?.type === 'assistant' && prev[idx]?.isStreaming) {
+          console.log('[MSG_CB] Merging assistant into streaming slot idx=', idx, 'msgContent=', String(message.content).substring(0, 60), 'existingContent=', String(prev[idx].content).substring(0, 60));
           const updated = [...prev];
           updated[idx] = {
             ...updated[idx],

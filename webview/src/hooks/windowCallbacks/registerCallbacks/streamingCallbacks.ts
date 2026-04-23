@@ -99,6 +99,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
   window.onStreamStart = () => {
     if (window.__sessionTransitioning) return;
+    console.log('[STREAM_CB] onStreamStart called, isStreaming=', isStreamingRef.current, 'msgIdx=', streamingMessageIndexRef.current);
     // Clear the previous stream-ended marker when a new turn starts
     window.__lastStreamEndedTurnId = undefined;
     window.__lastStreamEndedAt = undefined;
@@ -144,7 +145,10 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
   window.onContentDelta = (delta: string) => {
     if (window.__sessionTransitioning) return;
-    if (!isStreamingRef.current) return;
+    if (!isStreamingRef.current) {
+      console.log('[STREAM_CB] onContentDelta SKIPPED: isStreaming=false, delta=', delta.substring(0, 40));
+      return;
+    }
     window.__lastStreamActivityAt = Date.now();
     streamingContentRef.current += delta;
     activeThinkingSegmentIndexRef.current = -1;
@@ -256,7 +260,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     // [STREAM_END] lines and the stream_end WS event. After the first call,
     // isStreamingRef is false and all refs are cleared, so subsequent calls
     // are no-ops. Skip early to avoid unnecessary state churn.
-    if (!isStreamingRef.current && streamingMessageIndexRef.current < 0) return;
+    if (!isStreamingRef.current && streamingMessageIndexRef.current < 0) {
+      console.log('[STREAM_CB] onStreamEnd SKIPPED: isStreaming=false, msgIdx=-1');
+      return;
+    }
+    console.log('[STREAM_CB] onStreamEnd called, isStreaming=', isStreamingRef.current, 'msgIdx=', streamingMessageIndexRef.current, 'contentLen=', streamingContentRef.current.length, 'contentPreview=', streamingContentRef.current.substring(0, 80));
     clearStallWatchdog();
     const parsedSequence = parseSequence(sequence);
     if (parsedSequence != null) {
