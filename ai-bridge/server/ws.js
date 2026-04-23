@@ -42,10 +42,12 @@ function startDaemon() {
           const { ws, resolve } = pendingRequests.get(msg.id);
 
           if (msg.line) {
+            console.log('[ws] Daemon line for id=', msg.id, 'line=', msg.line.substring(0, 80));
             ws.send(JSON.stringify({ type: 'stream_line', id: msg.id, line: msg.line }));
           }
 
           if (msg.done) {
+            console.log('[ws] Daemon done for id=', msg.id, 'success=', msg.success, 'error=', msg.error);
             ws.send(JSON.stringify({
               type: msg.success ? 'stream_end' : 'stream_error',
               id: msg.id,
@@ -54,6 +56,8 @@ function startDaemon() {
             resolve(msg);
             pendingRequests.delete(msg.id);
           }
+        } else if (msg.id) {
+          console.log('[ws] Daemon response for unknown id=', msg.id, 'pendingIds=', [...pendingRequests.keys()].join(','));
         }
       } catch (e) {
         // Non-JSON lines (daemon debug logs) are safe to skip
@@ -95,23 +99,23 @@ export function createWsHandler(wss) {
           return;
         }
 
+        console.log('[ws] Received message type:', msg.type, 'keys:', Object.keys(msg).join(','));
+
         try {
           switch (msg.type) {
             case 'send_message': {
-              const { content, provider = 'claude', sessionId, model, permissionMode, cwd, attachments } = msg;
-              const method = attachments
-                ? `${provider}.sendWithAttachments`
-                : `${provider}.send`;
-
+              // Frontend sends {text, agent: {id, name, prompt}, fileTags, permissionMode, cwd}
+              // Daemon expects {message, agentPrompt, fileTags, permissionMode, cwd}
+              const { text, agent, fileTags, permissionMode, cwd } = msg;
+              console.log('[ws] send_message: text=', JSON.stringify(text)?.substring(0, 80), 'agent=', !!agent, 'fileTags=', !!fileTags, 'permissionMode=', permissionMode, 'cwd=', cwd);
               const daemonRequest = {
-                method,
+                method: 'claude.send',
                 params: {
-                  prompt: content,
-                  sessionId: sessionId || '',
-                  model: model || '',
+                  message: text || '',
+                  agentPrompt: agent?.prompt || null,
+                  fileTags,
                   permissionMode: permissionMode || 'default',
-                  cwd: cwd || process.cwd(),
-                  ...(attachments ? { attachments } : {}),
+                  ...(cwd ? { cwd } : {}),
                 },
               };
 
@@ -119,9 +123,13 @@ export function createWsHandler(wss) {
               daemonRequest.id = id;
               pendingRequests.set(id, { resolve: () => {}, reject: () => {}, ws });
 
+              console.log('[ws] Forwarding to daemon, id=', id, 'daemonReady=', daemonReady, 'daemonProcess=', !!daemonProcess);
               if (daemonProcess && daemonReady) {
-                daemonProcess.stdin.write(JSON.stringify(daemonRequest) + '\n');
+                const payload = JSON.stringify(daemonRequest) + '\n';
+                console.log('[ws] Writing to daemon stdin, payload length=', payload.length);
+                daemonProcess.stdin.write(payload);
               } else {
+                console.error('[ws] Daemon not ready! daemonProcess=', !!daemonProcess, 'daemonReady=', daemonReady);
                 ws.send(JSON.stringify({ type: 'stream_error', id, error: 'Daemon not ready' }));
                 pendingRequests.delete(id);
               }

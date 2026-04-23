@@ -152,7 +152,8 @@ export function registerMessageCallbacks(
     }
 
     try {
-      const parsed = JSON.parse(json) as ClaudeMessage[];
+      const raw = JSON.parse(json);
+      const parsed = (Array.isArray(raw) ? raw : [raw]) as ClaudeMessage[];
       if (sequence != null) {
         window.__minAcceptedUpdateSequence = Math.max(minAcceptedSequence, sequence);
       }

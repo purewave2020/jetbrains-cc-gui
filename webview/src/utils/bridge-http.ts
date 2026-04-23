@@ -2,6 +2,44 @@ import wsClient from './ws-client';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '' : `http://${window.location.hostname}:3001`);
 
+/** Cached working directory from backend settings (fetched once at startup, updated on settings change) */
+let cachedWorkingDir = '';
+
+/**
+ * Convert a daemon [MESSAGE] object (raw SDK format) to a ClaudeMessage
+ * that the frontend expects.
+ *
+ * Daemon format: {type:"assistant", message:{content:[{type:"text",text:"Hi!"}]}}
+ * ClaudeMessage: {type:"assistant", content:"Hi!", raw:{...}, timestamp:"..."}
+ */
+function convertDaemonMessage(msg: any): any | null {
+  if (!msg || !msg.type) return null;
+
+  // Extract display text from the nested message.content blocks
+  const contentBlocks = msg.message?.content ?? msg.content;
+  let content = '';
+  if (typeof contentBlocks === 'string') {
+    content = contentBlocks;
+  } else if (Array.isArray(contentBlocks)) {
+    content = contentBlocks
+      .filter((b: any) => b?.type === 'text')
+      .map((b: any) => b.text || '')
+      .join('\n');
+  }
+
+  return {
+    type: msg.type,
+    content,
+    raw: msg,  // Preserve full SDK message for tool_use/tool_result extraction
+    timestamp: msg.timestamp || new Date().toISOString(),
+    // Carry over fields the frontend may need
+    ...(msg.session_id ? { session_id: msg.session_id } : {}),
+    ...(msg.subtype ? { subtype: msg.subtype } : {}),
+    ...(msg.is_error ? { is_error: msg.is_error } : {}),
+    ...(msg.result ? { result: msg.result } : {}),
+  };
+}
+
 /** Build claude provider list with special pseudo-providers and isActive flags */
 function buildClaudeProviders(data: any) {
   const currentId = data.claude?.current || '';
@@ -58,11 +96,15 @@ export const sendBridgeEventHttp = async (event: string, content: string = ''): 
       case 'ask_user_question_response':
       case 'plan_approval_response':
       case 'heartbeat': {
-        let parsed = {};
+        let parsed: Record<string, any> = {};
         try { parsed = content ? JSON.parse(content) : {}; } catch { parsed = { text: content }; }
         const wsType = event
           .replace('send_message_with_attachments', 'send_message')
           .replace('interrupt_session', 'interrupt');
+        // Inject cwd from cached working directory for send_message
+        if ((wsType === 'send_message') && cachedWorkingDir && !parsed.cwd) {
+          parsed = { ...parsed, cwd: cachedWorkingDir };
+        }
         wsClient.send({ type: wsType, ...parsed });
         return true;
       }
@@ -434,6 +476,7 @@ export const sendBridgeEventHttp = async (event: string, content: string = ''): 
 
       case 'set_working_directory': {
         const { customWorkingDir } = JSON.parse(content);
+        cachedWorkingDir = customWorkingDir || '';
         await fetch(`${API_BASE}/api/settings/working-directory`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ customWorkingDir }) });
         (window as any).updateWorkingDirectory?.(JSON.stringify({ customWorkingDir }));
         return true;
@@ -1021,6 +1064,16 @@ export const initWebBridge = async () => {
     console.error('[bridge-http] Failed to connect WebSocket:', e);
   }
 
+  // Fetch and cache working directory from backend settings
+  try {
+    const wdRes = await fetch(`${API_BASE}/api/settings/working-directory`);
+    const wdData = await wdRes.json();
+    cachedWorkingDir = wdData.customWorkingDir || '';
+    console.log('[bridge-http] Cached working directory:', cachedWorkingDir || '(empty, will use daemon default)');
+  } catch (e) {
+    console.warn('[bridge-http] Failed to fetch working directory:', e);
+  }
+
   // Route WebSocket messages to window callbacks (same as JCEF callbacks)
   wsClient.on('stream_line', (data) => {
     const { line } = data;
@@ -1050,7 +1103,25 @@ export const initWebBridge = async () => {
       w.onStreamEnd?.();
     } else if (line.startsWith('[MESSAGE]')) {
       const json = line.substring('[MESSAGE] '.length).trim();
-      w.updateMessages?.(json);
+      // Daemon sends individual message objects via [MESSAGE] in its raw SDK format:
+      //   {type:"assistant", message:{content:[{type:"text",text:"Hi!"}]}, ...}
+      // Frontend expects ClaudeMessage format:
+      //   {type:"assistant", content:"Hi!", raw:{...}, timestamp:"..."}
+      try {
+        const parsed = JSON.parse(json);
+        if (Array.isArray(parsed)) {
+          // Already an array of ClaudeMessages (from Java backend)
+          w.updateMessages?.(json);
+        } else {
+          // Single daemon message — convert to ClaudeMessage and append
+          const claudeMsg = convertDaemonMessage(parsed);
+          if (claudeMsg) {
+            w.addHistoryMessage?.(claudeMsg);
+          }
+        }
+      } catch {
+        w.updateMessages?.(json);
+      }
     } else if (line.startsWith('[STATUS]')) {
       const text = line.substring('[STATUS] '.length).trim();
       w.updateStatus?.(text);
@@ -1078,7 +1149,12 @@ export const initWebBridge = async () => {
     } else if (line.startsWith('[ADD_MESSAGE]')) {
       const json = line.substring('[ADD_MESSAGE] '.length).trim();
       try { w.addHistoryMessage?.(JSON.parse(json)); } catch { /* skip */ }
+    } else if (line.startsWith('[MESSAGE_START]')) {
+      w.onStreamStart?.();
+    } else if (line.startsWith('[MESSAGE_END]')) {
+      w.onStreamEnd?.();
     }
+    // [CONTENT], [LIFECYCLE], [DEBUG], [TOOL_USE], [TOOL_RESULT] etc. are informational — skip
   });
 
   wsClient.on('stream_end', () => {
