@@ -1155,7 +1155,7 @@ export const initWebBridge = async () => {
       const delta = line.substring('[CONTENT_DELTA] '.length).trim();
       try {
         const parsed = JSON.parse(delta);
-        w.onContentDelta?.(parsed.text || delta);
+        w.onContentDelta?.(typeof parsed === 'object' && parsed?.text ? parsed.text : parsed);
       } catch {
         w.onContentDelta?.(delta);
       }
@@ -1163,7 +1163,7 @@ export const initWebBridge = async () => {
       const delta = line.substring('[THINKING_DELTA] '.length).trim();
       try {
         const parsed = JSON.parse(delta);
-        w.onThinkingDelta?.(parsed.text || delta);
+        w.onThinkingDelta?.(typeof parsed === 'object' && parsed?.text ? parsed.text : parsed);
       } catch {
         w.onThinkingDelta?.(delta);
       }
@@ -1184,18 +1184,33 @@ export const initWebBridge = async () => {
           // Single daemon message — convert to ClaudeMessage and append
           const claudeMsg = convertDaemonMessage(parsed);
           if (claudeMsg) {
+            console.log('[bridge-http] addHistoryMessage: type=', claudeMsg.type, 'content=', String(claudeMsg.content).substring(0, 80), 'rawKeys=', Object.keys(claudeMsg.raw || {}).join(','));
             w.addHistoryMessage?.(claudeMsg);
+          } else {
+            console.log('[bridge-http] convertDaemonMessage returned null for type=', parsed?.type);
           }
         }
       } catch {
         w.updateMessages?.(json);
       }
+    } else if (line.startsWith('[MESSAGE_SUPPRESSED]')) {
+      console.log('[bridge-http] Received suppressed message info:', line.substring('[MESSAGE_SUPPRESSED] '.length).trim());
     } else if (line.startsWith('[STATUS]')) {
       const text = line.substring('[STATUS] '.length).trim();
       w.updateStatus?.(text);
     } else if (line.startsWith('[PERMISSION_REQUEST]')) {
       const json = line.substring('[PERMISSION_REQUEST] '.length).trim();
-      w.showPermissionDialog?.(json);
+      try {
+        const parsed = JSON.parse(json);
+        // Map daemon's requestId to channelId so the dialog system can match
+        // the response back to the request when sending permission_decision
+        if (parsed.requestId && !parsed.channelId) {
+          parsed.channelId = parsed.requestId;
+        }
+        w.showPermissionDialog?.(JSON.stringify(parsed));
+      } catch {
+        w.showPermissionDialog?.(json);
+      }
     } else if (line.startsWith('[ASK_USER_QUESTION]')) {
       const json = line.substring('[ASK_USER_QUESTION] '.length).trim();
       w.showAskUserQuestionDialog?.(json);
@@ -1220,7 +1235,10 @@ export const initWebBridge = async () => {
     } else if (line.startsWith('[MESSAGE_START]')) {
       w.onStreamStart?.();
     } else if (line.startsWith('[MESSAGE_END]')) {
-      w.onStreamEnd?.();
+      // [MESSAGE_END] is a lifecycle signal that request processing is complete.
+      // Do NOT call onStreamEnd here — [STREAM_END] and the stream_end WS event
+      // are the authoritative stream-end signals. Calling onStreamEnd here causes
+      // a redundant/duplicate call that can interfere with state cleanup.
     }
     // [CONTENT], [LIFECYCLE], [DEBUG], [TOOL_USE], [TOOL_RESULT] etc. are informational — skip
   });

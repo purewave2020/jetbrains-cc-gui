@@ -27,6 +27,7 @@ import { createInterface } from 'readline';
 import { handleClaudeCommand } from './channels/claude-channel.js';
 import { handleCodexCommand } from './channels/codex-channel.js';
 import { loadClaudeSdk, isClaudeSdkAvailable } from './utils/sdk-loader.js';
+import { resolveStdoutIpcRequest } from './permission-ipc.js';
 import {
   sendMessagePersistent,
   sendMessageWithAttachmentsPersistent,
@@ -472,6 +473,18 @@ async function processRequest(request) {
           );
         });
       }
+      writeRawLine({ id: request.id || '0', done: true, success: true });
+      return;
+    }
+
+    // IPC responses (permission_decision, ask_user_question_response, plan_approval_response)
+    // bypass the command queue — they resolve pending promises in permission-ipc.js
+    if (request.method === 'ask_user_question_response' ||
+        request.method === 'permission_decision' ||
+        request.method === 'plan_approval_response') {
+      const params = request.params || request;
+      _originalStderrWrite(`[daemon] IPC response received: method=${request.method} keys=${Object.keys(params).join(',')}\n`, 'utf8');
+      resolveStdoutIpcRequest(request.method, params);
       writeRawLine({ id: request.id || '0', done: true, success: true });
       return;
     }

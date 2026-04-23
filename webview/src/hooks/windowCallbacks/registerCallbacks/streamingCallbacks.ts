@@ -252,6 +252,11 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
 
   window.onStreamEnd = (sequence?: string | number) => {
     if (window.__sessionTransitioning) return;
+    // Guard against redundant calls — onStreamEnd can be triggered by both
+    // [STREAM_END] lines and the stream_end WS event. After the first call,
+    // isStreamingRef is false and all refs are cleared, so subsequent calls
+    // are no-ops. Skip early to avoid unnecessary state churn.
+    if (!isStreamingRef.current && streamingMessageIndexRef.current < 0) return;
     clearStallWatchdog();
     const parsedSequence = parseSequence(sequence);
     if (parsedSequence != null) {

@@ -11,6 +11,10 @@ import {
   requestAskUserQuestionAnswers,
   requestPermissionFromJava,
   requestPlanApproval,
+  isDaemonMode,
+  requestAskUserQuestionViaStdout,
+  requestPermissionViaStdout,
+  requestPlanApprovalViaStdout,
 } from './permission-ipc.js';
 import { rewriteToolInputPaths, isDangerousPath } from './permission-safety.js';
 
@@ -102,7 +106,9 @@ export async function canUseTool(toolName, input, options = {}) {
   if (toolName === 'AskUserQuestion') {
     debugLog('ASK_USER_QUESTION', 'Handling AskUserQuestion tool', { input });
 
-    const answers = await requestAskUserQuestionAnswers(input);
+    const answers = isDaemonMode()
+      ? await requestAskUserQuestionViaStdout(input)
+      : await requestAskUserQuestionAnswers(input);
     const elapsed = Date.now() - callStartTime;
 
     if (answers !== null) {
@@ -162,9 +168,13 @@ export async function canUseTool(toolName, input, options = {}) {
   }
 
   // All other tools require explicit permission
-  debugLog('PERMISSION_NEEDED', `Tool ${toolName} requires permission, calling requestPermissionFromJava`);
-  const allowed = await requestPermissionFromJava(toolName, input);
+  debugLog('PERMISSION_NEEDED', `Tool ${toolName} requires permission, calling ${isDaemonMode() ? 'stdout' : 'file'} IPC`);
+  const allowed = isDaemonMode()
+    ? await requestPermissionViaStdout(toolName, input)
+    : await requestPermissionFromJava(toolName, input);
   const elapsed = Date.now() - callStartTime;
+
+  console.log(`[PERM_HANDLER] canUseTool result: toolName=${toolName} allowed=${allowed} elapsed=${elapsed}ms`);
 
   if (allowed) {
     debugLog('PERMISSION_GRANTED', `User allowed ${toolName}`, { elapsed: `${elapsed}ms` });

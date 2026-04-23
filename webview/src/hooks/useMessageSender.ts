@@ -16,6 +16,7 @@ export interface UseMessageSenderOptions {
   t: TFunction;
   addToast: (message: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
   currentProvider: string;
+  currentSessionId: string | null;
   permissionMode: PermissionMode;
   selectedAgent: SelectedAgent | null;
   sdkStatusLoaded: boolean;
@@ -43,6 +44,7 @@ export function useMessageSender({
   t,
   addToast,
   currentProvider,
+  currentSessionId,
   permissionMode,
   selectedAgent,
   sdkStatusLoaded,
@@ -202,6 +204,7 @@ export function useMessageSender({
           agent: agentInfo,
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
+          sessionId: currentSessionId,
         });
         sendBridgeEvent('send_message_with_attachments', payload);
       } catch (error) {
@@ -211,6 +214,7 @@ export function useMessageSender({
           agent: agentInfo,
           fileTags: fileTagsInfo,
           permissionMode: effectivePermissionMode,
+          sessionId: currentSessionId,
         });
         sendBridgeEvent('send_message', fallbackPayload);
       }
@@ -220,10 +224,11 @@ export function useMessageSender({
         agent: agentInfo,
         fileTags: fileTagsInfo,
         permissionMode: effectivePermissionMode,
+        sessionId: currentSessionId,
       });
       sendBridgeEvent('send_message', payload);
     }
-  }, [currentProvider]);
+  }, [currentProvider, currentSessionId]);
 
   /**
    * Execute message sending (from queue or directly)

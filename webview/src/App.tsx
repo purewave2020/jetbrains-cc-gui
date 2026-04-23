@@ -304,7 +304,7 @@ const App = () => {
     interruptSession,
   } = useMessageSender({
     t, addToast,
-    currentProvider, permissionMode, selectedAgent,
+    currentProvider, currentSessionId, permissionMode, selectedAgent,
     sdkStatusLoaded, currentSdkInstalled,
     sentAttachmentsRef, chatInputRef, messagesContainerRef,
     isUserAtBottomRef, userPausedRef, isStreamingRef,

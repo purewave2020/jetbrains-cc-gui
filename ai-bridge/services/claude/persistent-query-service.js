@@ -242,6 +242,15 @@ async function executeTurn(runtime, requestContext, turnMeta) {
 
       if (shouldOutputMessage(msg, turnState)) {
         console.log('[MESSAGE]', JSON.stringify(msg));
+      } else {
+        // Log suppressed messages for debugging
+        if (msg?.type === 'assistant' && turnState.streamingEnabled) {
+          const content = msg.message?.content;
+          const hasText = Array.isArray(content) && content.some(b => b.type === 'text');
+          if (hasText) {
+            console.log('[MESSAGE_SUPPRESSED] type=assistant, streaming=true, hasText=true, no tool_use');
+          }
+        }
       }
 
       processMessageContent(msg, turnState);
@@ -315,6 +324,12 @@ function emitSendError(runtime, error, requestContext) {
   console.log(JSON.stringify(payload));
 }
 
+function isSessionNotFoundError(error) {
+  const msg = error?.message || '';
+  const stderr = error?.details?.sdkError || '';
+  return msg.includes('No conversation found with session') || stderr.includes('No conversation found with session');
+}
+
 async function sendInternal(params, withAttachments) {
   const safeParams = params || {};
   const turnMeta = { state: null };
@@ -327,6 +342,36 @@ async function sendInternal(params, withAttachments) {
   } catch (error) {
     // Only clear if this runtime still owns the pointer (not cleared by abort)
     clearActiveTurnRuntimeIf(runtime);
+
+    // If session resume failed because the session no longer exists,
+    // retry without resume to start a fresh conversation.
+    if (isSessionNotFoundError(error) && requestContext?.requestedSessionId) {
+      console.log('[LIFECYCLE] Session resume failed, retrying without resume. sessionId=' + requestContext.requestedSessionId);
+      if (runtime && !runtime.closed) {
+        await disposeRuntime(runtime, { removeSession });
+        runtime = null;
+      }
+      try {
+        const freshParams = { ...safeParams, sessionId: '' };
+        requestContext = await buildRequestContext(freshParams, withAttachments);
+        runtime = await acquireRuntime(requestContext, { registerActiveQueryResult, removeSession });
+        turnMeta.state = null;
+        await executeTurn(runtime, requestContext, turnMeta);
+        return;
+      } catch (retryError) {
+        clearActiveTurnRuntimeIf(runtime);
+        if (turnMeta.state?.streamingEnabled && turnMeta.state?.streamStarted && !turnMeta.state?.streamEnded) {
+          process.stdout.write('[STREAM_END]\n');
+          turnMeta.state.streamEnded = true;
+        }
+        emitSendError(runtime, retryError, requestContext);
+        if (runtime && !runtime.closed && retryError?.runtimeTerminated) {
+          await disposeRuntime(runtime, { removeSession });
+        }
+        return;
+      }
+    }
+
     if (turnMeta.state?.streamingEnabled && turnMeta.state?.streamStarted && !turnMeta.state?.streamEnded) {
       // NOTE: Do NOT emit accumulatedUsage at stream end, even on error.
       // If an assistant message was received, emitUsageTag already sent the correct usage.

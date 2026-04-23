@@ -6,7 +6,201 @@ import { writeFileSync, readFileSync, existsSync, unlinkSync, readdirSync, mkdir
 import { join } from 'path';
 import { tmpdir } from 'os';
 
-// ========== Debug logging ==========
+// ========== Stdout-based IPC for daemon (web) mode ==========
+
+// When running as a daemon, permission requests are communicated via stdout/stdin
+// instead of file-system IPC (which requires a Java process to read/write files).
+
+// Pending AskUserQuestion requests waiting for stdin responses
+const pendingAskUserQuestionRequests = new Map();
+
+// Pending permission requests waiting for stdin responses
+const pendingPermissionRequests = new Map();
+
+// Pending plan approval requests waiting for stdin responses
+const pendingPlanApprovalRequests = new Map();
+
+/**
+ * Check if we're running in daemon mode (web mode) where stdout/stdin IPC is used.
+ */
+export function isDaemonMode() {
+  return process.env.CLAUDE_DAEMON_MODE === 'true' || (process.argv[1] && process.argv[1].includes('daemon'));
+}
+
+/**
+ * Request AskUserQuestion answers via stdout/stdin communication (daemon/web mode).
+ * Emits [ASK_USER_QUESTION] tag to stdout and waits for response via stdin.
+ * @param {Object} input - AskUserQuestion tool parameters (contains questions array)
+ * @returns {Promise<Object|null>} - User answers object, returns null on failure
+ */
+export async function requestAskUserQuestionViaStdout(input) {
+  const requestStartTime = Date.now();
+  debugLog('ASK_USER_QUESTION_STDOUT_START', 'Requesting answers via stdout', { input });
+
+  const requestId = `ask-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  debugLog('ASK_USER_QUESTION_STDOUT_ID', `Generated request ID: ${requestId}`);
+
+  const requestData = {
+    requestId,
+    toolName: 'AskUserQuestion',
+    questions: input.questions || [],
+    timestamp: new Date().toISOString(),
+    cwd: process.cwd()
+  };
+
+  // Emit the [ASK_USER_QUESTION] tag — daemon.js stdout interception wraps it
+  // with the active request ID so ws.js can forward it to the frontend
+  console.log('[ASK_USER_QUESTION]', JSON.stringify(requestData));
+
+  // Wait for response via stdin (resolved by resolveStdoutIpcRequest below)
+  return new Promise((resolve) => {
+    const timeout = PERMISSION_TIMEOUT_MS;
+
+    const timer = setTimeout(() => {
+      pendingAskUserQuestionRequests.delete(requestId);
+      debugLog('ASK_USER_QUESTION_STDOUT_TIMEOUT', `Timeout waiting for answers via stdout`, { elapsed: `${Date.now() - requestStartTime}ms` });
+      resolve(null);
+    }, timeout);
+
+    pendingAskUserQuestionRequests.set(requestId, { resolve, timer });
+    debugLog('ASK_USER_QUESTION_STDOUT_WAITING', `Waiting for stdin response`, { requestId });
+  });
+}
+
+/**
+ * Request permission via stdout/stdin communication (daemon/web mode).
+ * Emits [PERMISSION_REQUEST] tag to stdout and waits for response via stdin.
+ * @param {string} toolName - Tool name
+ * @param {Object} input - Tool parameters
+ * @returns {Promise<boolean>} - Whether allowed
+ */
+export async function requestPermissionViaStdout(toolName, input) {
+  const requestStartTime = Date.now();
+  debugLog('PERMISSION_STDOUT_START', `Requesting permission via stdout for: ${toolName}`, { input });
+
+  const requestId = `${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  const requestData = {
+    requestId,
+    toolName,
+    inputs: input,
+    timestamp: new Date().toISOString(),
+    cwd: process.cwd()
+  };
+
+  console.log('[PERMISSION_REQUEST]', JSON.stringify(requestData));
+  console.log('[PERM_IPC] requestPermissionViaStdout: requestId=' + requestId + ' toolName=' + toolName + ' pendingIds=[' + [...pendingPermissionRequests.keys()].join(',') + ']');
+
+  return new Promise((resolve) => {
+    const timeout = PERMISSION_TIMEOUT_MS;
+
+    const timer = setTimeout(() => {
+      pendingPermissionRequests.delete(requestId);
+      debugLog('PERMISSION_STDOUT_TIMEOUT', `Timeout waiting for permission via stdout`, { toolName, elapsed: `${Date.now() - requestStartTime}ms` });
+      console.log('[PERM_IPC] TIMEOUT: permission request ' + requestId + ' timed out');
+      resolve(false);
+    }, timeout);
+
+    pendingPermissionRequests.set(requestId, { resolve, timer });
+  });
+}
+
+/**
+ * Request plan approval via stdout/stdin communication (daemon/web mode).
+ * Emits [PLAN_APPROVAL] tag to stdout and waits for response via stdin.
+ * @param {Object} input - ExitPlanMode tool parameters
+ * @returns {Promise<Object>} - { approved: boolean, targetMode: string, message?: string }
+ */
+export async function requestPlanApprovalViaStdout(input) {
+  const requestStartTime = Date.now();
+  debugLog('PLAN_APPROVAL_STDOUT_START', 'Requesting plan approval via stdout', { input });
+
+  const requestId = `plan-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+  const plan = typeof input?.plan === 'string' ? input.plan.substring(0, 100000) : '';
+  const rawPrompts = Array.isArray(input?.allowedPrompts) ? input.allowedPrompts : [];
+  const allowedPrompts = rawPrompts
+    .filter(p => p && typeof p.tool === 'string' && typeof p.prompt === 'string')
+    .map(p => ({ tool: String(p.tool), prompt: String(p.prompt) }));
+
+  const requestData = {
+    requestId,
+    toolName: 'ExitPlanMode',
+    plan,
+    allowedPrompts,
+    timestamp: new Date().toISOString(),
+    cwd: process.cwd()
+  };
+
+  console.log('[PLAN_APPROVAL]', JSON.stringify(requestData));
+
+  return new Promise((resolve) => {
+    const timeout = PERMISSION_TIMEOUT_MS;
+
+    const timer = setTimeout(() => {
+      pendingPlanApprovalRequests.delete(requestId);
+      debugLog('PLAN_APPROVAL_STDOUT_TIMEOUT', `Timeout waiting for plan approval via stdout`, { elapsed: `${Date.now() - requestStartTime}ms` });
+      resolve({ approved: false, message: 'Plan approval timed out' });
+    }, timeout);
+
+    pendingPlanApprovalRequests.set(requestId, { resolve, timer });
+  });
+}
+
+/**
+ * Resolve a pending stdout IPC request when a response arrives via stdin.
+ * Called by daemon.js when it receives ask_user_question_response,
+ * permission_decision, or plan_approval_response methods.
+ * @param {string} method - The IPC method name
+ * @param {Object} params - The response parameters
+ */
+export function resolveStdoutIpcRequest(method, params) {
+  debugLog('STDOUT_IPC_RESOLVE', `Resolving stdout IPC request`, { method, params });
+
+  if (method === 'ask_user_question_response') {
+    const requestId = params.requestId;
+    const entry = pendingAskUserQuestionRequests.get(requestId);
+    if (entry) {
+      clearTimeout(entry.timer);
+      pendingAskUserQuestionRequests.delete(requestId);
+      const answers = params.answers || null;
+      debugLog('ASK_USER_QUESTION_STDOUT_RESOLVED', `Resolved with answers`, { requestId, answers });
+      entry.resolve(answers);
+    } else {
+      debugLog('ASK_USER_QUESTION_STDOUT_UNKNOWN', `No pending request for id`, { requestId });
+    }
+  } else if (method === 'permission_decision') {
+    // Frontend sends channelId (mapped from daemon's requestId in bridge-http.ts)
+    const requestId = params.requestId || params.channelId;
+    console.log('[PERM_IPC] resolveStdoutIpcRequest permission_decision: requestId=' + requestId + ' channelId=' + params.channelId + ' allow=' + params.allow + ' pendingIds=[' + [...pendingPermissionRequests.keys()].join(',') + ']');
+    const entry = pendingPermissionRequests.get(requestId);
+    if (entry) {
+      clearTimeout(entry.timer);
+      pendingPermissionRequests.delete(requestId);
+      const allowed = params.allow === true;
+      debugLog('PERMISSION_STDOUT_RESOLVED', `Resolved with allow=${allowed}`, { requestId });
+      console.log('[PERM_IPC] Permission request ' + requestId + ' resolved: allowed=' + allowed);
+      entry.resolve(allowed);
+    } else {
+      debugLog('PERMISSION_STDOUT_UNKNOWN', `No pending request for id`, { requestId });
+      console.log('[PERM_IPC] UNKNOWN: No pending permission request for id=' + requestId);
+    }
+  } else if (method === 'plan_approval_response') {
+    const requestId = params.requestId;
+    const entry = pendingPlanApprovalRequests.get(requestId);
+    if (entry) {
+      clearTimeout(entry.timer);
+      pendingPlanApprovalRequests.delete(requestId);
+      const approved = params.approved === true;
+      const targetMode = params.targetMode || 'default';
+      const message = params.message;
+      debugLog('PLAN_APPROVAL_STDOUT_RESOLVED', `Resolved with approved=${approved}`, { requestId });
+      entry.resolve({ approved, targetMode, message });
+    } else {
+      debugLog('PLAN_APPROVAL_STDOUT_UNKNOWN', `No pending request for id`, { requestId });
+    }
+  }
+}
+
+// ========== File-system IPC (for Java/plugin mode) ==========
 export function debugLog(tag, message, data = null) {
   const timestamp = new Date().toISOString();
   const dataStr = data ? ` | Data: ${JSON.stringify(data)}` : '';

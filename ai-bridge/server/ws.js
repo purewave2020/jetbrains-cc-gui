@@ -104,10 +104,10 @@ export function createWsHandler(wss) {
         try {
           switch (msg.type) {
             case 'send_message': {
-              // Frontend sends {text, agent: {id, name, prompt}, fileTags, permissionMode, cwd}
-              // Daemon expects {message, agentPrompt, fileTags, permissionMode, cwd}
-              const { text, agent, fileTags, permissionMode, cwd, streaming } = msg;
-              console.log('[ws] send_message: text=', JSON.stringify(text)?.substring(0, 80), 'agent=', !!agent, 'fileTags=', !!fileTags, 'permissionMode=', permissionMode, 'cwd=', cwd, 'streaming=', streaming);
+              // Frontend sends {text, agent: {id, name, prompt}, fileTags, permissionMode, cwd, sessionId}
+              // Daemon expects {message, agentPrompt, fileTags, permissionMode, cwd, sessionId}
+              const { text, agent, fileTags, permissionMode, cwd, streaming, sessionId } = msg;
+              console.log('[ws] send_message: text=', JSON.stringify(text)?.substring(0, 80), 'agent=', !!agent, 'fileTags=', !!fileTags, 'permissionMode=', permissionMode, 'cwd=', cwd, 'streaming=', streaming, 'sessionId=', sessionId);
               const daemonRequest = {
                 method: 'claude.send',
                 params: {
@@ -117,6 +117,7 @@ export function createWsHandler(wss) {
                   permissionMode: permissionMode || 'default',
                   streaming: streaming !== false,
                   ...(cwd ? { cwd } : {}),
+                  ...(sessionId ? { sessionId } : {}),
                 },
               };
 
@@ -156,7 +157,11 @@ export function createWsHandler(wss) {
               if (daemonProcess && daemonReady) {
                 const id = String(++requestIdCounter);
                 const daemonMsg = { id, method: msg.type, params: msg };
-                daemonProcess.stdin.write(JSON.stringify(daemonMsg) + '\n');
+                const payload = JSON.stringify(daemonMsg) + '\n';
+                console.log('[ws] Forwarding IPC to daemon, method=', msg.type, 'payload=', payload.substring(0, 200));
+                daemonProcess.stdin.write(payload);
+              } else {
+                console.error('[ws] Cannot forward IPC to daemon - not ready, method=', msg.type);
               }
               break;
             }
