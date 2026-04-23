@@ -127,6 +127,47 @@ export const sendBridgeEventHttp = async (event: string, content: string = ''): 
       }
 
       case 'load_session': {
+        try {
+          const res = await fetch(`${API_BASE}/api/history/${encodeURIComponent(content)}?provider=claude`);
+          const data = await res.json();
+          if (data.messages) {
+            // Convert raw .jsonl entries to ClaudeMessage format
+            const claudeMessages = data.messages
+              .filter((m: any) => m.type === 'user' || m.type === 'assistant')
+              .map((m: any) => {
+                const contentBlocks = m.message?.content ?? m.content;
+                let textContent = '';
+                if (typeof contentBlocks === 'string') {
+                  textContent = contentBlocks;
+                } else if (Array.isArray(contentBlocks)) {
+                  textContent = contentBlocks
+                    .filter((b: any) => b?.type === 'text')
+                    .map((b: any) => b.text || '')
+                    .join('\n');
+                }
+                return {
+                  type: m.type,
+                  content: textContent,
+                  raw: m,
+                  timestamp: m.timestamp || new Date().toISOString(),
+                  ...(m.session_id ? { session_id: m.session_id } : {}),
+                  ...(m.subtype ? { subtype: m.subtype } : {}),
+                  ...(m.is_error ? { is_error: m.is_error } : {}),
+                  ...(m.result ? { result: m.result } : {}),
+                };
+              });
+            // Release session transition guard so updateMessages is not blocked
+            window.__sessionTransitioning = false;
+            window.__sessionTransitionToken = null;
+            (window as any).updateMessages?.(JSON.stringify(claudeMessages));
+            (window as any).historyLoadComplete?.();
+          }
+        } catch (e) {
+          console.error('[bridge-http] load_session error:', e);
+          // Release transition guard even on failure to prevent UI freeze
+          window.__sessionTransitioning = false;
+          window.__sessionTransitionToken = null;
+        }
         return true;
       }
 
@@ -224,9 +265,27 @@ export const sendBridgeEventHttp = async (event: string, content: string = ''): 
 
       // --- History ---
       case 'load_history_data': {
-        const res = await fetch(`${API_BASE}/api/history?provider=${encodeURIComponent(content)}`);
-        const data = await res.json();
-        (window as any).setHistoryData?.(data);
+        try {
+          const res = await fetch(`${API_BASE}/api/history?provider=${encodeURIComponent(content)}`);
+          const data = await res.json();
+          // Backend returns a plain array of {id, provider, project, lastModified, size}.
+          // Frontend expects HistoryData: { success, sessions: [{sessionId, title, ...}], total }
+          const sessions = Array.isArray(data)
+            ? data.map((s: any) => ({
+                sessionId: s.id || s.sessionId || '',
+                title: s.title || s.id || '',
+                messageCount: s.messageCount || 0,
+                lastTimestamp: s.lastTimestamp || (s.lastModified ? new Date(s.lastModified).toISOString() : undefined),
+                isFavorited: s.isFavorited || false,
+                favoritedAt: s.favoritedAt,
+                provider: s.provider,
+              }))
+            : (data.sessions || []);
+          const total = Array.isArray(data) ? data.length : (data.total || sessions.length);
+          (window as any).setHistoryData?.({ success: true, sessions, total });
+        } catch (e: any) {
+          (window as any).setHistoryData?.({ success: false, error: e.message });
+        }
         return true;
       }
 
