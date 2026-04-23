@@ -9,7 +9,7 @@ import { mapModelIdToSdkName, resolveModelFromSettings, setModelEnvironmentVaria
 import { AsyncStream } from '../../utils/async-stream.js';
 import { canUseTool } from '../../permission-handler.js';
 import { buildContentBlocks, loadAttachments } from './attachment-service.js';
-import { buildIDEContextPrompt } from '../system-prompts.js';
+import { buildReadOnlyPrompt, buildIDEContextPrompt } from '../system-prompts.js';
 import { buildQuickFixPrompt } from '../quickfix-prompts.js';
 import { emitAccumulatedUsage, mergeUsage } from '../../utils/usage-utils.js';
 import {
@@ -116,10 +116,11 @@ async function loadSdkQueryFunction(logPrefix) {
  * Build the systemPrompt.append content from opened files and agent prompt.
  */
 function buildSystemPromptAppend(openedFiles, agentPrompt, message) {
+  const readOnlyPrompt = buildReadOnlyPrompt();
   if (openedFiles && openedFiles.isQuickFix) {
-    return buildQuickFixPrompt(openedFiles, message);
+    return readOnlyPrompt + '\n\n' + buildQuickFixPrompt(openedFiles, message);
   }
-  return buildIDEContextPrompt(openedFiles, agentPrompt);
+  return readOnlyPrompt + '\n\n' + buildIDEContextPrompt(openedFiles, agentPrompt);
 }
 
 /**

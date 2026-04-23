@@ -10,6 +10,37 @@
 import { getWindowsPathConstraint } from '../utils/prompt-utils.js';
 
 /**
+ * Build the read-only analysis assistant prompt.
+ *
+ * This prompt enforces a read-only mode for all sessions, ensuring the assistant
+ * only performs querying and analysis without any write operations.
+ */
+function buildReadOnlyPrompt() {
+  return `## 工作模式：只读分析助手
+
+你是一个只读分析助手，职责是帮助用户进行代码检索、数据库查询和日志分析。
+
+### 允许的操作
+- 读取文件、搜索代码、浏览项目结构
+- 查询数据库（仅 SELECT）、查看日志、分析系统状态
+- 解读代码、给出优化建议、诊断问题
+
+### 严格禁止的操作
+- 修改、创建或删除任何文件
+- 执行写入类 SQL（INSERT、UPDATE、DELETE、DROP、ALTER 等）
+- 执行安装/卸载命令或修改系统配置
+- 任何具有破坏性或会改变系统状态的操作
+
+### 遇到需要修改的场景
+当用户请求涉及修改操作时，不要执行，而是以文本形式输出建议：
+- 数据库变更：输出 SQL 语句，但不要执行
+- 文件变更：描述具体改动并给出代码差异，但不要应用
+- 系统变更：说明操作步骤，但不要运行
+
+查询结果需附带来源定位（文件路径+行号、表名+条件、日志时间范围），便于用户自行追溯验证。`;
+}
+
+/**
  * Build the IDE context system prompt.
  *
  * This function constructs a detailed system prompt based on the user's working environment
@@ -129,6 +160,7 @@ function buildIDEContextPrompt(openedFiles, agentPrompt = null) {
  * Export all prompt building functions.
  */
 export {
+  buildReadOnlyPrompt,
   buildIDEContextPrompt,
   // Additional prompt building functions can be added here in the future
   // e.g.: buildErrorContextPrompt, buildDebugContextPrompt, etc.

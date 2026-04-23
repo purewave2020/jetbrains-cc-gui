@@ -12,7 +12,7 @@ import {
 } from '../../utils/model-utils.js';
 import { canUseTool } from '../../permission-handler.js';
 import { buildContentBlocks, loadAttachments } from './attachment-service.js';
-import { buildIDEContextPrompt } from '../system-prompts.js';
+import { buildReadOnlyPrompt, buildIDEContextPrompt } from '../system-prompts.js';
 import { buildQuickFixPrompt } from '../quickfix-prompts.js';
 import { registerActiveQueryResult, removeSession } from './message-service.js';
 import { normalizePermissionMode } from './permission-mode.js';
@@ -70,10 +70,11 @@ function resolveStreamingEnabled(params, settings) {
 function buildSystemPromptAppend(params) {
   const openedFiles = params.openedFiles || null;
   const agentPrompt = params.agentPrompt || null;
+  const readOnlyPrompt = buildReadOnlyPrompt();
   if (openedFiles && openedFiles.isQuickFix) {
-    return buildQuickFixPrompt(openedFiles, params.message || '');
+    return readOnlyPrompt + '\n\n' + buildQuickFixPrompt(openedFiles, params.message || '');
   }
-  return buildIDEContextPrompt(openedFiles, agentPrompt);
+  return readOnlyPrompt + '\n\n' + buildIDEContextPrompt(openedFiles, agentPrompt);
 }
 
 function buildQueryOptions(workingDirectory, sdkModelName, permissionMode, maxThinkingTokens, streamingEnabled, systemPromptAppend, requestedSessionId) {
