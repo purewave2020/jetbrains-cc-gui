@@ -586,7 +586,28 @@ export function registerMessageCallbacks(
 
   window.addHistoryMessage = (message: ClaudeMessage) => {
     if (window.__sessionTransitioning) return;
-    setMessages((prev) => [...prev, message]);
+    setMessages((prev) => {
+      // When streaming is active and a daemon [MESSAGE] arrives for the assistant,
+      // merge it into the existing streaming assistant message instead of appending
+      // a duplicate. This prevents empty assistant messages and misplaced duration.
+      if (isStreamingRef.current && message.type === 'assistant') {
+        const idx = streamingMessageIndexRef.current;
+        if (idx >= 0 && idx < prev.length && prev[idx]?.type === 'assistant' && prev[idx]?.isStreaming) {
+          const updated = [...prev];
+          updated[idx] = {
+            ...updated[idx],
+            content: message.content || updated[idx].content,
+            raw: message.raw || updated[idx].raw,
+            isStreaming: false,
+            ...(message.subtype ? { subtype: message.subtype } : {}),
+            ...(message.is_error ? { is_error: message.is_error } : {}),
+            ...(message.result ? { result: message.result } : {}),
+          };
+          return updated;
+        }
+      }
+      return [...prev, message];
+    });
   };
 
   // History load complete callback — triggers Markdown re-rendering

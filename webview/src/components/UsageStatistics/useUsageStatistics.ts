@@ -167,14 +167,15 @@ export function useUsageStatistics(currentProvider?: string) {
 
   const getFilteredDailyUsage = (): DailyUsage[] => {
     if (!statistics) return [];
-    if (dateRange === 'all') return statistics.dailyUsage;
+    const daily = statistics.dailyUsage || [];
+    if (dateRange === 'all') return daily;
 
     const now = Date.now();
     const cutoffDate = dateRange === '7d'
       ? now - 7 * 24 * 60 * 60 * 1000
       : now - 30 * 24 * 60 * 60 * 1000;
 
-    return statistics.dailyUsage.filter(day => new Date(day.date).getTime() >= cutoffDate);
+    return daily.filter(day => new Date(day.date).getTime() >= cutoffDate);
   };
 
   const filteredDailyUsage = getFilteredDailyUsage();

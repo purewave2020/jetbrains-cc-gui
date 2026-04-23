@@ -4,6 +4,8 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? '' 
 
 /** Cached working directory from backend settings (fetched once at startup, updated on settings change) */
 let cachedWorkingDir = '';
+/** Cached streaming enabled setting from backend (fetched once at startup, updated on settings change) */
+let cachedStreamingEnabled = true;
 
 /**
  * Convert a daemon [MESSAGE] object (raw SDK format) to a ClaudeMessage
@@ -14,6 +16,10 @@ let cachedWorkingDir = '';
  */
 function convertDaemonMessage(msg: any): any | null {
   if (!msg || !msg.type) return null;
+
+  // Filter system messages (init, compact_boundary, etc.) and result messages
+  // — they should not be displayed as chat bubbles
+  if (msg.type === 'system' || msg.type === 'result') return null;
 
   // Extract display text from the nested message.content blocks
   const contentBlocks = msg.message?.content ?? msg.content;
@@ -101,9 +107,12 @@ export const sendBridgeEventHttp = async (event: string, content: string = ''): 
         const wsType = event
           .replace('send_message_with_attachments', 'send_message')
           .replace('interrupt_session', 'interrupt');
-        // Inject cwd from cached working directory for send_message
+        // Inject cwd from cached working directory and streaming from cached setting
         if ((wsType === 'send_message') && cachedWorkingDir && !parsed.cwd) {
           parsed = { ...parsed, cwd: cachedWorkingDir };
+        }
+        if ((wsType === 'send_message') && !('streaming' in parsed)) {
+          parsed = { ...parsed, streaming: cachedStreamingEnabled };
         }
         wsClient.send({ type: wsType, ...parsed });
         return true;

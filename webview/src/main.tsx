@@ -78,25 +78,6 @@ function createBridgeHeartbeatStarter() {
 }
 
 const startBridgeHeartbeat = createBridgeHeartbeatStarter();
-// vConsole debugging tool
-const enableVConsole =
-  import.meta.env.DEV || import.meta.env.VITE_ENABLE_VCONSOLE === 'true';
-
-if (enableVConsole) {
-  void import('vconsole').then(({ default: VConsole }) => {
-    new VConsole();
-    // Move vConsole button to top-left corner to avoid blocking the send button in the bottom-right
-    setTimeout(() => {
-      const vcSwitch = document.getElementById('__vconsole') as HTMLElement;
-      if (vcSwitch) {
-        vcSwitch.style.left = '10px';
-        vcSwitch.style.right = 'auto';
-        vcSwitch.style.top = '10px';
-        vcSwitch.style.bottom = 'auto';
-      }
-    }, 100);
-  });
-}
 
 /**
  * Apply IDEA editor font configuration to CSS variables

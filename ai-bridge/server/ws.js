@@ -106,8 +106,8 @@ export function createWsHandler(wss) {
             case 'send_message': {
               // Frontend sends {text, agent: {id, name, prompt}, fileTags, permissionMode, cwd}
               // Daemon expects {message, agentPrompt, fileTags, permissionMode, cwd}
-              const { text, agent, fileTags, permissionMode, cwd } = msg;
-              console.log('[ws] send_message: text=', JSON.stringify(text)?.substring(0, 80), 'agent=', !!agent, 'fileTags=', !!fileTags, 'permissionMode=', permissionMode, 'cwd=', cwd);
+              const { text, agent, fileTags, permissionMode, cwd, streaming } = msg;
+              console.log('[ws] send_message: text=', JSON.stringify(text)?.substring(0, 80), 'agent=', !!agent, 'fileTags=', !!fileTags, 'permissionMode=', permissionMode, 'cwd=', cwd, 'streaming=', streaming);
               const daemonRequest = {
                 method: 'claude.send',
                 params: {
@@ -115,6 +115,7 @@ export function createWsHandler(wss) {
                   agentPrompt: agent?.prompt || null,
                   fileTags,
                   permissionMode: permissionMode || 'default',
+                  streaming: streaming !== false,
                   ...(cwd ? { cwd } : {}),
                 },
               };
