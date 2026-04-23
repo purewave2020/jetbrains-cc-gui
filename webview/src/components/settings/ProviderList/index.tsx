@@ -60,6 +60,11 @@ export default function ProviderList({
     pinnedIds: [SPECIAL_PROVIDER_IDS.LOCAL_SETTINGS, SPECIAL_PROVIDER_IDS.CLI_LOGIN],
   });
 
+  // Debug: log localProviders for button state diagnosis
+  useEffect(() => {
+    console.log('[ProviderList] localProviders updated:', localProviders.map(p => ({ id: p.id, isActive: p.isActive })));
+  }, [localProviders]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (importMenuRef.current && !importMenuRef.current.contains(event.target as Node)) {

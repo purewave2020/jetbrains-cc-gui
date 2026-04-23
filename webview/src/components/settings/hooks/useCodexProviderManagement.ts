@@ -66,9 +66,13 @@ export function useCodexProviderManagement(options: UseCodexProviderManagementOp
   // Update active Codex provider (used by window callback)
   const updateActiveCodexProvider = useCallback((activeProvider: CodexProviderConfig) => {
     if (activeProvider) {
-      setCodexProviders((prev) =>
-        prev.map((p) => ({ ...p, isActive: p.id === activeProvider.id }))
-      );
+      setCodexProviders((prev) => {
+        const exists = prev.some((p) => p.id === activeProvider.id);
+        if (!exists) {
+          return prev;
+        }
+        return prev.map((p) => ({ ...p, isActive: p.id === activeProvider.id }));
+      });
       // Custom models are now plugin-level, managed by PluginCustomModels in ProviderTabSection.
       // No longer sync provider-level customModels to localStorage.
     }

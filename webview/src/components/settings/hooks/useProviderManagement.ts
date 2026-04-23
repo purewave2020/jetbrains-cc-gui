@@ -67,6 +67,7 @@ export function useProviderManagement(options: UseProviderManagementOptions = {}
 
   // Load provider list
   const loadProviders = useCallback(() => {
+    console.log('[useProviderManagement] loadProviders called');
     setLoading(true);
     sendToJava('get_providers:');
   }, []);
@@ -74,6 +75,7 @@ export function useProviderManagement(options: UseProviderManagementOptions = {}
   // Update provider list (used by window callback)
   const updateProviders = useCallback(
     (providersList: ProviderConfig[]) => {
+      console.log('[useProviderManagement] updateProviders: count=', providersList.length, 'providers=', providersList.map(p => ({ id: p.id, isActive: p.isActive })));
       setProviders(providersList);
       const active = providersList.find((p) => p.isActive);
       if (active) {
@@ -90,9 +92,16 @@ export function useProviderManagement(options: UseProviderManagementOptions = {}
   const updateActiveProvider = useCallback(
     (activeProvider: ProviderConfig) => {
       if (activeProvider) {
-        setProviders((prev) =>
-          prev.map((p) => ({ ...p, isActive: p.id === activeProvider.id }))
-        );
+        setProviders((prev) => {
+          // Only update if the active provider ID exists in the current list;
+          // otherwise preserve existing isActive state (avoids wiping flags
+          // when the backend returns a fallback/default provider).
+          const exists = prev.some((p) => p.id === activeProvider.id);
+          if (!exists) {
+            return prev;
+          }
+          return prev.map((p) => ({ ...p, isActive: p.id === activeProvider.id }));
+        });
         syncActiveProviderModelMapping(activeProvider);
       }
     },
@@ -188,6 +197,7 @@ export function useProviderManagement(options: UseProviderManagementOptions = {}
   // Switch provider
   const handleSwitchProvider = useCallback(
     (id: string) => {
+      console.log('[useProviderManagement] handleSwitchProvider called, id=', id);
       const data = { id };
       if (id === SPECIAL_PROVIDER_IDS.DISABLED) {
         syncActiveProviderModelMapping(null);
@@ -196,6 +206,7 @@ export function useProviderManagement(options: UseProviderManagementOptions = {}
         return;
       }
       const target = providers.find((p) => p.id === id);
+      console.log('[useProviderManagement] handleSwitchProvider target found=', !!target, 'providers count=', providers.length);
       if (target) {
         syncActiveProviderModelMapping(target);
       }

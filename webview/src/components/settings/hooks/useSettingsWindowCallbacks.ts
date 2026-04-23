@@ -95,6 +95,7 @@ export function useSettingsWindowCallbacks(deps: SettingsWindowCallbacksDeps) {
     window.updateProviders = (jsonStr: string) => {
       try {
         const providersList: ProviderConfig[] = JSON.parse(jsonStr);
+        console.log('[SettingsWindowCallbacks] updateProviders called, count=', providersList.length, 'providers=', providersList.map(p => ({ id: p.id, isActive: p.isActive })));
         d().updateProviders(providersList);
       } catch (error) {
         console.error('[SettingsView] Failed to parse providers:', error);

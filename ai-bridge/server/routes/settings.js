@@ -20,6 +20,12 @@ router.get('/active-provider', (_req, res) => {
   const currentId = config.claude?.current || '';
   if (currentId && config.claude?.providers?.[currentId]) {
     res.json({ provider: config.claude.providers[currentId] });
+  } else if (currentId === '__local_settings_json__') {
+    res.json({ provider: { id: '__local_settings_json__', name: 'Local Settings', isLocalProvider: true } });
+  } else if (currentId === '__cli_login__') {
+    res.json({ provider: { id: '__cli_login__', name: 'CLI Login', isCliLoginProvider: true } });
+  } else if (currentId === '__disabled__') {
+    res.json({ provider: { id: '__disabled__', name: 'Disabled' } });
   } else {
     res.json({ provider: { id: 'anthropic', name: 'Anthropic', type: 'claude', apiKey: '', baseUrl: '' } });
   }
@@ -147,6 +153,106 @@ router.put('/auto-open-file', (req, res) => {
   const { enabled } = req.body;
   const updated = updateConfig({ autoOpenFile: { default: enabled } });
   res.json({ enabled: updated.autoOpenFile.default });
+});
+
+// Sound notification
+router.get('/sound-notification', (_req, res) => {
+  const config = loadConfig();
+  const sn = config.soundNotification || {};
+  res.json({ enabled: sn.enabled ?? false, onlyWhenUnfocused: sn.onlyWhenUnfocused ?? false, selectedSound: sn.selectedSound || 'default', customSoundPath: sn.customSoundPath || '' });
+});
+router.put('/sound-notification', (req, res) => {
+  const updated = updateConfig({ soundNotification: req.body });
+  const sn = updated.soundNotification;
+  res.json({ enabled: sn.enabled ?? false, onlyWhenUnfocused: sn.onlyWhenUnfocused ?? false, selectedSound: sn.selectedSound || 'default', customSoundPath: sn.customSoundPath || '' });
+});
+
+// Commit generation
+router.get('/commit-generation', (_req, res) => {
+  const config = loadConfig();
+  res.json({ enabled: config.commitGeneration?.enabled ?? true, prompt: config.commitGeneration?.prompt || '' });
+});
+router.put('/commit-generation', (req, res) => {
+  const updated = updateConfig({ commitGeneration: req.body });
+  res.json({ enabled: updated.commitGeneration.enabled ?? true, prompt: updated.commitGeneration.prompt || '' });
+});
+
+// Codex sandbox mode
+router.get('/codex-sandbox-mode', (_req, res) => {
+  const config = loadConfig();
+  res.json({ sandboxMode: config.codex?.sandboxMode || 'workspace-write' });
+});
+router.put('/codex-sandbox-mode', (req, res) => {
+  const config = loadConfig();
+  config.codex = config.codex || {};
+  config.codex.sandboxMode = req.body.sandboxMode;
+  saveConfig(config);
+  res.json({ sandboxMode: config.codex.sandboxMode });
+});
+
+// Node path
+router.get('/node-path', (_req, res) => {
+  const config = loadConfig();
+  res.json({ path: config.nodePath || '', version: null });
+});
+router.put('/node-path', (req, res) => {
+  const updated = updateConfig({ nodePath: req.body.path });
+  res.json({ path: updated.nodePath || '', version: null });
+});
+
+// Working directory
+router.get('/working-directory', (_req, res) => {
+  const config = loadConfig();
+  res.json({ customWorkingDir: config.workingDirectory || '' });
+});
+router.put('/working-directory', (req, res) => {
+  const updated = updateConfig({ workingDirectory: req.body.customWorkingDir });
+  res.json({ customWorkingDir: updated.workingDirectory || '' });
+});
+
+// Status bar widget
+router.get('/status-bar-widget', (_req, res) => {
+  const config = loadConfig();
+  res.json({ enabled: config.statusBarWidget?.enabled ?? true });
+});
+router.put('/status-bar-widget', (req, res) => {
+  const updated = updateConfig({ statusBarWidget: { enabled: req.body.enabled } });
+  res.json({ enabled: updated.statusBarWidget.enabled });
+});
+
+// Reasoning effort
+router.get('/reasoning-effort', (_req, res) => {
+  const config = loadConfig();
+  res.json({ effort: config.reasoningEffort || 'medium' });
+});
+router.put('/reasoning-effort', (req, res) => {
+  const updated = updateConfig({ reasoningEffort: req.body.effort });
+  res.json({ effort: updated.reasoningEffort });
+});
+
+// Selected agent
+router.get('/selected-agent', (_req, res) => {
+  const config = loadConfig();
+  res.json({ agentId: config.selectedAgent || '' });
+});
+router.put('/selected-agent', (req, res) => {
+  const updated = updateConfig({ selectedAgent: req.body.agentId });
+  res.json({ agentId: updated.selectedAgent });
+});
+
+// Provider sort order
+router.put('/sort-providers', (req, res) => {
+  const { type, order } = req.body;
+  const config = loadConfig();
+  if (type === 'claude') {
+    config.claude = config.claude || {};
+    config.claude.providerOrder = order;
+  } else if (type === 'codex') {
+    config.codex = config.codex || {};
+    config.codex.providerOrder = order;
+  }
+  saveConfig(config);
+  res.json({ success: true });
 });
 
 export default router;
