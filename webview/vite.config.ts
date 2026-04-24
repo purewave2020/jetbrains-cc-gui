@@ -12,6 +12,8 @@ export default defineConfig({
     !isWebMode && viteSingleFile(),
   ].filter(Boolean),
   server: {
+    port: 5174,
+    host: true,
     proxy: isWebMode
       ? {
           '/api': {

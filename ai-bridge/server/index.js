@@ -62,7 +62,9 @@ wss.on('connection', (ws, request) => {
   wsHandler.handleConnection(ws, request);
 });
 
-server.listen(PORT, () => {
+const HOST = process.env.HOST || '0.0.0.0';
+
+server.listen(PORT, HOST, () => {
   console.log(`[cc-gui] Server running at http://localhost:${PORT}`);
   console.log(`[cc-gui] WebSocket at ws://localhost:${PORT}/api/chat`);
 });
