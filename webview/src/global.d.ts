@@ -209,6 +209,11 @@ interface Window {
   codexMcpServerDeleted?: (json: string) => void;
 
   /**
+   * Update Codex MCP server tools list
+   */
+  updateCodexMcpServerTools?: (json: string) => void;
+
+  /**
    * Update providers list
    */
   updateProviders?: (json: string) => void;

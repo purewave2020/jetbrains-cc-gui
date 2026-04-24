@@ -102,12 +102,14 @@ export function useToolsUpdate({
       }
     };
 
-    // Register on the window object
+    // Register on the window object (both Claude and Codex variants)
     window.updateMcpServerTools = handleToolsUpdate;
+    window.updateCodexMcpServerTools = handleToolsUpdate;
 
     // Cleanup
     return () => {
       window.updateMcpServerTools = undefined;
+      window.updateCodexMcpServerTools = undefined;
     };
   }, [cacheKeys, setServerTools, onLog]);
 }

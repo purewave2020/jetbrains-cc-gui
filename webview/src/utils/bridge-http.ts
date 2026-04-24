@@ -840,21 +840,32 @@ export const sendBridgeEventHttp = async (event: string, content: string = ''): 
       }
 
       // --- MCP server management ---
+      // Helper to determine MCP scope from event name
+      // MCP UI sends events without scope (e.g., 'get_mcp_servers') — default to 'project'
+      // Explicit scope variants (get_project_mcp_servers, get_global_mcp_servers) also supported
+      case 'get_mcp_servers':
       case 'get_project_mcp_servers':
-      case 'get_global_mcp_servers': {
-        const mcpScope = event.includes('project') ? 'project' : 'global';
+      case 'get_global_mcp_servers':
+      case 'get_codex_mcp_servers':
+      case 'get_codex_project_mcp_servers':
+      case 'get_codex_global_mcp_servers': {
+        const mcpScope = event.includes('global') ? 'global' : 'project';
+        const isCodexMcp = event.startsWith('get_codex_');
         const res = await fetch(`${API_BASE}/api/mcp/${mcpScope}/servers`);
         const data = await res.json();
         const servers = Object.values(data.servers || {});
-        const cb = event.includes('project') ? 'updateMcpServers' : 'updateMcpServers';
-        // Both project and global use updateMcpServers — but codex uses updateCodexMcpServers
+        const cb = isCodexMcp ? 'updateCodexMcpServers' : 'updateMcpServers';
         (window as any)[cb]?.(JSON.stringify(servers));
         return true;
       }
 
+      case 'toggle_mcp_server':
       case 'toggle_project_mcp_server':
-      case 'toggle_global_mcp_server': {
-        const toggleScope = event.includes('project') ? 'project' : 'global';
+      case 'toggle_global_mcp_server':
+      case 'toggle_codex_mcp_server':
+      case 'toggle_codex_project_mcp_server':
+      case 'toggle_codex_global_mcp_server': {
+        const toggleScope = event.includes('global') ? 'global' : 'project';
         const serverData = JSON.parse(content);
         await fetch(`${API_BASE}/api/mcp/${toggleScope}/servers/${encodeURIComponent(serverData.id)}/toggle`, {
           method: 'PUT',
@@ -864,13 +875,18 @@ export const sendBridgeEventHttp = async (event: string, content: string = ''): 
         // Refresh server list
         const refreshRes = await fetch(`${API_BASE}/api/mcp/${toggleScope}/servers`);
         const refreshData = await refreshRes.json();
-        (window as any).updateMcpServers?.(JSON.stringify(Object.values(refreshData.servers || {})));
+        const toggleCb = event.startsWith('toggle_codex_') ? 'updateCodexMcpServers' : 'updateMcpServers';
+        (window as any)[toggleCb]?.(JSON.stringify(Object.values(refreshData.servers || {})));
         return true;
       }
 
+      case 'add_mcp_server':
       case 'add_project_mcp_server':
-      case 'add_global_mcp_server': {
-        const addScope = event.includes('project') ? 'project' : 'global';
+      case 'add_global_mcp_server':
+      case 'add_codex_mcp_server':
+      case 'add_codex_project_mcp_server':
+      case 'add_codex_global_mcp_server': {
+        const addScope = event.includes('global') ? 'global' : 'project';
         const newServer = JSON.parse(content);
         await fetch(`${API_BASE}/api/mcp/${addScope}/servers/${encodeURIComponent(newServer.id)}`, {
           method: 'PUT',
@@ -879,13 +895,18 @@ export const sendBridgeEventHttp = async (event: string, content: string = ''): 
         });
         const addMcpRes = await fetch(`${API_BASE}/api/mcp/${addScope}/servers`);
         const addMcpData = await addMcpRes.json();
-        (window as any).updateMcpServers?.(JSON.stringify(Object.values(addMcpData.servers || {})));
+        const addCb = event.startsWith('add_codex_') ? 'updateCodexMcpServers' : 'updateMcpServers';
+        (window as any)[addCb]?.(JSON.stringify(Object.values(addMcpData.servers || {})));
         return true;
       }
 
+      case 'update_mcp_server':
       case 'update_project_mcp_server':
-      case 'update_global_mcp_server': {
-        const updScope = event.includes('project') ? 'project' : 'global';
+      case 'update_global_mcp_server':
+      case 'update_codex_mcp_server':
+      case 'update_codex_project_mcp_server':
+      case 'update_codex_global_mcp_server': {
+        const updScope = event.includes('global') ? 'global' : 'project';
         const updServer = JSON.parse(content);
         await fetch(`${API_BASE}/api/mcp/${updScope}/servers/${encodeURIComponent(updServer.id)}`, {
           method: 'PUT',
@@ -894,38 +915,56 @@ export const sendBridgeEventHttp = async (event: string, content: string = ''): 
         });
         const updMcpRes = await fetch(`${API_BASE}/api/mcp/${updScope}/servers`);
         const updMcpData = await updMcpRes.json();
-        (window as any).updateMcpServers?.(JSON.stringify(Object.values(updMcpData.servers || {})));
+        const updCb = event.startsWith('update_codex_') ? 'updateCodexMcpServers' : 'updateMcpServers';
+        (window as any)[updCb]?.(JSON.stringify(Object.values(updMcpData.servers || {})));
         return true;
       }
 
+      case 'delete_mcp_server':
       case 'delete_project_mcp_server':
-      case 'delete_global_mcp_server': {
-        const delScope = event.includes('project') ? 'project' : 'global';
+      case 'delete_global_mcp_server':
+      case 'delete_codex_mcp_server':
+      case 'delete_codex_project_mcp_server':
+      case 'delete_codex_global_mcp_server': {
+        const delScope = event.includes('global') ? 'global' : 'project';
         const delServer = JSON.parse(content);
         await fetch(`${API_BASE}/api/mcp/${delScope}/servers/${encodeURIComponent(delServer.id)}`, {
           method: 'DELETE',
         });
         const delMcpRes = await fetch(`${API_BASE}/api/mcp/${delScope}/servers`);
         const delMcpData = await delMcpRes.json();
-        (window as any).updateMcpServers?.(JSON.stringify(Object.values(delMcpData.servers || {})));
+        const delCb = event.startsWith('delete_codex_') ? 'updateCodexMcpServers' : 'updateMcpServers';
+        (window as any)[delCb]?.(JSON.stringify(Object.values(delMcpData.servers || {})));
         return true;
       }
 
+      case 'get_mcp_server_status':
       case 'get_project_mcp_server_status':
-      case 'get_global_mcp_server_status': {
-        const statusScope = event.includes('project') ? 'project' : 'global';
+      case 'get_global_mcp_server_status':
+      case 'get_codex_mcp_server_status':
+      case 'get_codex_project_mcp_server_status':
+      case 'get_codex_global_mcp_server_status': {
+        const statusScope = event.includes('global') ? 'global' : 'project';
+        const isCodexStatus = event.startsWith('get_codex_');
         const res = await fetch(`${API_BASE}/api/mcp/${statusScope}/status`);
         const data = await res.json();
-        (window as any).updateMcpServerStatus?.(JSON.stringify(data.statuses || {}));
+        const statusCb = isCodexStatus ? 'updateCodexMcpServerStatus' : 'updateMcpServerStatus';
+        (window as any)[statusCb]?.(JSON.stringify(data.statuses || {}));
         return true;
       }
 
+      case 'get_mcp_server_tools':
       case 'get_project_mcp_server_tools':
-      case 'get_global_mcp_server_tools': {
-        const toolsScope = event.includes('project') ? 'project' : 'global';
+      case 'get_global_mcp_server_tools':
+      case 'get_codex_mcp_server_tools':
+      case 'get_codex_project_mcp_server_tools':
+      case 'get_codex_global_mcp_server_tools': {
+        const toolsScope = event.includes('global') ? 'global' : 'project';
+        const isCodexTools = event.startsWith('get_codex_');
         const res = await fetch(`${API_BASE}/api/mcp/${toolsScope}/tools`);
         const data = await res.json();
-        (window as any).updateMcpServerTools?.(JSON.stringify(data.tools || []));
+        const toolsCb = isCodexTools ? 'updateCodexMcpServerTools' : 'updateMcpServerTools';
+        (window as any)[toolsCb]?.(JSON.stringify(data.tools || []));
         return true;
       }
 

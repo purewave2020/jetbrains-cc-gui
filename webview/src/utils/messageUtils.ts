@@ -443,6 +443,16 @@ export function mergeConsecutiveAssistantMessages(
     const prevTurnId = previous.__turnId;
     const nextTurnId = next.__turnId;
 
+    // When the previous assistant message just finished streaming (has the
+    // recently-ended turn ID) and the next assistant message has no __turnId,
+    // the next message is likely a late [MESSAGE] event for the same turn.
+    // Merge them so that durationMs stays with the full content in one div.
+    // Without this, two `message assistant` divs appear — the first has
+    // durationMs at the bottom, the second has the full content below it.
+    if (hasRecentlyEndedTurnId(prevTurnId) && nextTurnId === undefined) {
+      return true;
+    }
+
     // If either message has the recently-ended turn ID, block merging
     if (hasRecentlyEndedTurnId(prevTurnId) || hasRecentlyEndedTurnId(nextTurnId)) {
       return false;
@@ -492,6 +502,21 @@ export function mergeConsecutiveAssistantMessages(
 
   const buildMergedAssistantMessage = (group: ClaudeMessage[]): ClaudeMessage => {
     const first = group[0];
+
+    // When merging a recently-ended streaming message with a late [MESSAGE]
+    // (no __turnId), prefer the late message's raw blocks since they contain
+    // the complete final content. The streaming message's raw may have partial
+    // or duplicated blocks. Keep first's durationMs and __turnId.
+    if (group.length === 2 && hasRecentlyEndedTurnId(first.__turnId) && group[1].__turnId === undefined) {
+      const second = group[1];
+      const secondContent = (first.content || '') + '\n' + (second.content || '');
+      return {
+        ...first,
+        content: secondContent.trim(),
+        raw: second.raw || first.raw,
+        __turnId: first.__turnId,
+      };
+    }
 
     const combinedBlocks: ClaudeContentBlock[] = [];
     const contentParts: string[] = [];

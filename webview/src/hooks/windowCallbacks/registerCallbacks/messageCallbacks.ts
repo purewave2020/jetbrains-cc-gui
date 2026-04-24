@@ -608,6 +608,41 @@ export function registerMessageCallbacks(
           return updated;
         }
       }
+
+      // When streaming has ended but the [MESSAGE] event arrives late (race condition
+      // with onStreamEnd), merge it into the last assistant message instead of appending
+      // a duplicate. Without this, two `message assistant` divs appear — the first has
+      // durationMs at the bottom, the second has the full content below it, causing the
+      // duration to visually appear above the content.
+      if (message.type === 'assistant' && !isStreamingRef.current) {
+        const lastStreamEndedTurnId = window.__lastStreamEndedTurnId;
+        const lastStreamEndedAt = window.__lastStreamEndedAt;
+        // Only merge if the stream recently ended (within 5s) — this distinguishes
+        // a late [MESSAGE] from a legitimate new assistant turn in history load.
+        if (typeof lastStreamEndedTurnId === 'number' && lastStreamEndedTurnId > 0 &&
+            typeof lastStreamEndedAt === 'number' &&
+            Date.now() - lastStreamEndedAt < 5000) {
+          for (let i = prev.length - 1; i >= 0; i--) {
+            if (prev[i].type === 'assistant' && prev[i].__turnId === lastStreamEndedTurnId) {
+              console.log('[MSG_CB] Merging late assistant into turn-matched slot idx=', i);
+              const updated = [...prev];
+              updated[i] = {
+                ...updated[i],
+                content: message.content || updated[i].content,
+                raw: message.raw || updated[i].raw,
+                isStreaming: false,
+                // Preserve durationMs from the streaming message
+                ...(typeof updated[i].durationMs === 'number' ? { durationMs: updated[i].durationMs } : {}),
+                ...(message.subtype ? { subtype: message.subtype } : {}),
+                ...(message.is_error ? { is_error: message.is_error } : {}),
+                ...(message.result ? { result: message.result } : {}),
+              };
+              return updated;
+            }
+          }
+        }
+      }
+
       return [...prev, message];
     });
   };
