@@ -258,6 +258,25 @@ export function registerMessageCallbacks(
 
         // Non-streaming case (or streaming hasn't started yet)
         if (!isStreamingRef.current) {
+          // Guard: After onStreamEnd finalizes the streaming assistant's content,
+          // a stale backend snapshot arriving via rAF-deferred processUpdateMessages
+          // would overwrite the finalized content with an older version (the backend
+          // snapshot lags behind the actual streaming state). When a late [MESSAGE]
+          // event later arrives via addHistoryMessage, it creates a SECOND assistant
+          // div with the correct content, while the first div (overwritten by the
+          // stale snapshot) keeps durationMs — producing the "two assistant divs" bug.
+          //
+          // Skip the update when streaming just ended (< 3s ago) and the last
+          // assistant already has a finalized durationMs from onStreamEnd.
+          const recentStreamEndAt = window.__lastStreamEndedAt;
+          if (typeof recentStreamEndAt === 'number' && Date.now() - recentStreamEndAt < 3000) {
+            const lastAsstIdx = findLastAssistantIndex(prev);
+            if (lastAsstIdx >= 0 && typeof prev[lastAsstIdx].durationMs === 'number') {
+              console.log('[MSG_CB] processUpdateMessages: skipping stale backend snapshot — streaming just ended (', Date.now() - recentStreamEndAt, 'ms ago)');
+              return prev;
+            }
+          }
+
           // Smart merge: reuse old message objects for performance
           let smartMerged = parsed.map((newMsg, i) => {
             if (i < prev.length) {
@@ -591,16 +610,24 @@ export function registerMessageCallbacks(
       // When streaming is active and a daemon [MESSAGE] arrives for the assistant,
       // merge it into the existing streaming assistant message instead of appending
       // a duplicate. This prevents empty assistant messages and misplaced duration.
+      //
+      // IMPORTANT: The daemon's executeTurn loop can emit multiple [MESSAGE] events
+      // for tool_use blocks within a single streaming turn. The first [MESSAGE] merges
+      // successfully, but must NOT set isStreaming=false — otherwise subsequent [MESSAGE]
+      // events can't find the streaming slot (isStreaming check fails) and get appended
+      // as separate assistant divs. onStreamEnd is responsible for setting isStreaming=false.
       if (isStreamingRef.current && message.type === 'assistant') {
         const idx = streamingMessageIndexRef.current;
-        if (idx >= 0 && idx < prev.length && prev[idx]?.type === 'assistant' && prev[idx]?.isStreaming) {
-          console.log('[MSG_CB] Merging assistant into streaming slot idx=', idx, 'msgContent=', String(message.content).substring(0, 60), 'existingContent=', String(prev[idx].content).substring(0, 60));
+        if (idx >= 0 && idx < prev.length && prev[idx]?.type === 'assistant') {
+          console.log('[MSG_CB] Merging assistant into streaming slot idx=', idx, 'msgContent=', String(message.content).substring(0, 60), 'existingContent=', String(prev[idx].content).substring(0, 60), 'existingIsStreaming=', prev[idx].isStreaming);
           const updated = [...prev];
           updated[idx] = {
             ...updated[idx],
             content: message.content || updated[idx].content,
             raw: message.raw || updated[idx].raw,
-            isStreaming: false,
+            // Keep isStreaming as-is — onStreamEnd will set it to false when the
+            // stream actually ends. Setting it false here would break subsequent
+            // [MESSAGE] merges in the same streaming turn.
             ...(message.subtype ? { subtype: message.subtype } : {}),
             ...(message.is_error ? { is_error: message.is_error } : {}),
             ...(message.result ? { result: message.result } : {}),
@@ -643,6 +670,16 @@ export function registerMessageCallbacks(
         }
       }
 
+      // Log when a new assistant message is appended (not merged) — this creates a new div
+      if (message.type === 'assistant') {
+        console.warn('[MSG_CB] APPENDING new assistant message (not merged) — isStreaming=', isStreamingRef.current, 'msgIdx=', streamingMessageIndexRef.current, 'prevLen=', prev.length, 'lastStreamEndedAt=', window.__lastStreamEndedAt, 'streamEndedMs=', typeof window.__lastStreamEndedAt === 'number' ? Date.now() - window.__lastStreamEndedAt : 'n/a');
+        // Dump assistant messages in prev for debugging
+        prev.forEach((m, i) => {
+          if (m.type === 'assistant') {
+            console.warn('  prev[' + i + '] __turnId=' + m.__turnId + ' isStreaming=' + m.isStreaming + ' hasDurationMs=' + (typeof m.durationMs === 'number') + ' contentLen=' + (m.content || '').length);
+          }
+        });
+      }
       return [...prev, message];
     });
   };
