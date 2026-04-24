@@ -120,9 +120,15 @@ export const sendBridgeEventHttp = async (event: string, content: string = ''): 
 
       // --- Session management ---
       case 'create_new_session': {
-        const res = await fetch(`${API_BASE}/api/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
-        const session = await res.json();
-        (window as any).setSessionId?.(session.id);
+        await fetch(`${API_BASE}/api/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+        // Do NOT call setSessionId here — the server-side session UUID is not an SDK session ID.
+        // The real SDK session ID arrives later via the [SESSION_ID] stdout tag.
+        // Setting it here causes "No conversation found with session ID" on the first message
+        // because the SDK doesn't recognize the server-generated UUID as a resumable session.
+        // Release the transition guard immediately — new sessions have no history to load,
+        // so streaming callbacks (onStreamStart, onContentDelta, etc.) should not be blocked.
+        (window as any).__sessionTransitioning = false;
+        (window as any).__sessionTransitionToken = null;
         return true;
       }
 

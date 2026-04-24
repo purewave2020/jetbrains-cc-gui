@@ -5,6 +5,7 @@
  * onStreamStart, onContentDelta, onThinkingDelta, onStreamEnd, onPermissionDenied.
  */
 
+import type { ClaudeContentOrResultBlock } from '../../../types';
 import type { UseWindowCallbacksOptions } from '../../useWindowCallbacks';
 import { sendBridgeEvent } from '../../../utils/bridge';
 import { THROTTLE_INTERVAL } from '../../useStreamingMessages';
@@ -51,6 +52,7 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     thinkingUpdateTimeoutRef,
     getOrCreateStreamingAssistantIndex,
     patchAssistantForStreaming,
+    extractRawBlocks,
   } = options;
 
   // ── Stream stall watchdog ──
@@ -303,6 +305,14 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
     const endedStreamingMessageIndex = streamingMessageIndexRef.current;
     const endedStreamingContent = streamingContentRef.current;
 
+    // FIX: Snapshot text/thinking segments BEFORE clearing refs. The UI renders
+    // from raw.message.content blocks, not from the plain content string. Without
+    // rebuilding raw blocks from the final segments, the last few deltas that were
+    // accumulated in refs but not yet flushed via the throttled setMessages are
+    // lost from the rendered output.
+    const endedTextSegments = [...streamingTextSegmentsRef.current];
+    const endedThinkingSegments = [...streamingThinkingSegmentsRef.current];
+
     // FIX: Clear streaming refs BEFORE setMessages updater to prevent race conditions.
     //
     // Trade-off analysis:
@@ -348,19 +358,52 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
       const idx = endedStreamingMessageIndex;
       if (prev.length > 0 && idx >= 0 && idx < prev.length && prev[idx]?.type === 'assistant') {
         newMessages = [...prev];
-        // FIX: Keep __turnId on the message for a short period to prevent
-        // incorrect merging with history messages. The __turnId will be
-        // removed later when history is loaded or a new turn starts.
-        const finalContent = endedStreamingContent || newMessages[idx].content || '';
-        // Calculate durationMs and stamp it on the assistant message
+        const existing = newMessages[idx];
+        const finalContent = endedStreamingContent || existing.content || '';
         const durationMs = (typeof turnStartedAt === 'number' && turnStartedAt > 0)
           ? Date.now() - turnStartedAt
           : undefined;
+
+        // FIX: Rebuild raw.message.content blocks from snapshotted segments so
+        // the UI (which renders from raw blocks) shows the full content including
+        // the last few deltas that the throttle hadn't flushed yet.
+        const existingRaw = (existing.raw && typeof existing.raw === 'object')
+          ? existing.raw as Record<string, unknown>
+          : { message: { content: [] } };
+        const existingBlocks = extractRawBlocks(existingRaw);
+        const newBlocks: ClaudeContentOrResultBlock[] = [];
+
+        // Preserve non-text, non-thinking blocks (e.g. tool_use)
+        for (const block of existingBlocks) {
+          if (typeof block === 'object' && block !== null) {
+            const b = block as Record<string, unknown>;
+            if (b.type !== 'text' && b.type !== 'thinking') {
+              newBlocks.push(block as ClaudeContentOrResultBlock);
+            }
+          }
+        }
+
+        // Add thinking blocks from snapshotted segments
+        for (const seg of endedThinkingSegments) {
+          newBlocks.push({ type: 'thinking' as const, thinking: seg });
+        }
+
+        // Add text block from snapshotted segments
+        if (endedTextSegments.length > 0) {
+          newBlocks.push({ type: 'text' as const, text: endedTextSegments.join('') });
+        }
+
+        const msg = existingRaw.message as Record<string, unknown> | undefined;
+        const updatedRaw = msg
+          ? { ...existingRaw, message: { ...msg, content: newBlocks } }
+          : { ...existingRaw, content: newBlocks };
+
         newMessages[idx] = {
-          ...newMessages[idx],
+          ...existing,
           content: finalContent,
           isStreaming: false,
-          __turnId: endedStreamingTurnId, // Keep __turnId for merge guard
+          raw: updatedRaw,
+          __turnId: endedStreamingTurnId,
           ...(durationMs != null ? { durationMs } : {}),
         };
       }
