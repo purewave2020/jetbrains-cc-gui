@@ -260,18 +260,45 @@ export function registerMessageCallbacks(
         if (!isStreamingRef.current) {
           // Guard: After onStreamEnd finalizes the streaming assistant's content,
           // a stale backend snapshot arriving via rAF-deferred processUpdateMessages
-          // would overwrite the finalized content with an older version (the backend
-          // snapshot lags behind the actual streaming state). When a late [MESSAGE]
-          // event later arrives via addHistoryMessage, it creates a SECOND assistant
-          // div with the correct content, while the first div (overwritten by the
-          // stale snapshot) keeps durationMs — producing the "two assistant divs" bug.
+          // would overwrite the finalized content with an older version. However,
+          // the backend's FINAL snapshot (sent after [STREAM_END]) contains the
+          // complete content including all tool_use/tool_result blocks — which is
+          // more complete than what onStreamEnd built from segments alone.
           //
-          // Skip the update when streaming just ended (< 3s ago) and the last
-          // assistant already has a finalized durationMs from onStreamEnd.
+          // Strategy: After streaming ended, compare the backend snapshot's last
+          // assistant with the current one. If the backend has more raw blocks or
+          // longer content, it's the final complete snapshot — allow it through.
+          // Otherwise skip to prevent a stale intermediate snapshot from overwriting.
           const recentStreamEndAt = window.__lastStreamEndedAt;
           if (typeof recentStreamEndAt === 'number' && Date.now() - recentStreamEndAt < 3000) {
             const lastAsstIdx = findLastAssistantIndex(prev);
             if (lastAsstIdx >= 0 && typeof prev[lastAsstIdx].durationMs === 'number') {
+              // Check if the backend snapshot is more complete
+              const backendLastAsstIdx = findLastAssistantIndex(parsed);
+              if (backendLastAsstIdx >= 0) {
+                const currentBlocks = extractRawBlocks(prev[lastAsstIdx].raw);
+                const backendBlocks = extractRawBlocks(parsed[backendLastAsstIdx].raw);
+                const backendContent = parsed[backendLastAsstIdx].content || '';
+                const currentContent = prev[lastAsstIdx].content || '';
+
+                // Allow if backend has more blocks or longer content (it's the final snapshot)
+                if (backendBlocks.length > currentBlocks.length || backendContent.length > currentContent.length) {
+                  // Backend snapshot is more complete — allow it through but preserve durationMs
+                  const smartMerged = parsed.map((newMsg, i) => {
+                    if (i < prev.length) {
+                      const oldMsg = prev[i];
+                      if (typeof oldMsg.durationMs === 'number' && newMsg.type === 'assistant') {
+                        newMsg = { ...newMsg, durationMs: oldMsg.durationMs };
+                      }
+                    }
+                    return newMsg;
+                  });
+                  const result = preserveLastAssistantIdentity(prev, smartMerged, findLastAssistantIndex);
+                  const finalResult = preserveLatestMessagesOnShrink(prev, appendOptimisticMessageIfMissing(prev, result), options.currentProviderRef.current);
+                  console.log('[MSG_CB] processUpdateMessages: accepting more-complete backend snapshot after stream end (backend blocks=', backendBlocks.length, 'current blocks=', currentBlocks.length, ')');
+                  return finalizeMessageList(prev, finalResult);
+                }
+              }
               console.log('[MSG_CB] processUpdateMessages: skipping stale backend snapshot — streaming just ended (', Date.now() - recentStreamEndAt, 'ms ago)');
               return prev;
             }

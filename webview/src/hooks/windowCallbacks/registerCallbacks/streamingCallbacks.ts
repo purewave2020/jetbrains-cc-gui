@@ -364,33 +364,81 @@ export function registerStreamingCallbacks(options: UseWindowCallbacksOptions): 
           ? Date.now() - turnStartedAt
           : undefined;
 
-        // FIX: Rebuild raw.message.content blocks from snapshotted segments so
-        // the UI (which renders from raw blocks) shows the full content including
-        // the last few deltas that the throttle hadn't flushed yet.
+        // FIX: Preserve existing raw blocks and only supplement with segments
+        // for any last deltas that the throttle hadn't flushed yet.
+        //
+        // The previous approach discarded all text/thinking blocks and rebuilt
+        // from segments, but segments only contain onContentDelta/onThinkingDelta
+        // data — they don't include tool_use, tool_result, or text that arrived
+        // via updateMessages. This caused tool calls, interleaved text, and
+        // thinking blocks to be lost.
+        //
+        // The correct approach: keep existing blocks (which already contain the
+        // full content from updateMessages + patchAssistantForStreaming), and
+        // only update the last text/thinking block if the segment buffer has
+        // more content (i.e., the last few deltas that the throttle missed).
         const existingRaw = (existing.raw && typeof existing.raw === 'object')
           ? existing.raw as Record<string, unknown>
           : { message: { content: [] } };
         const existingBlocks = extractRawBlocks(existingRaw);
         const newBlocks: ClaudeContentOrResultBlock[] = [];
 
-        // Preserve non-text, non-thinking blocks (e.g. tool_use)
+        // Track which segment indices have been consumed by matching to
+        // existing blocks, so we can append any remaining segments at the end.
+        let thinkingSegIdx = 0;
+        let textSegIdx = 0;
+
         for (const block of existingBlocks) {
-          if (typeof block === 'object' && block !== null) {
-            const b = block as Record<string, unknown>;
-            if (b.type !== 'text' && b.type !== 'thinking') {
+          if (typeof block !== 'object' || block === null) {
+            newBlocks.push(block as ClaudeContentOrResultBlock);
+            continue;
+          }
+          const b = block as Record<string, unknown>;
+
+          if (b.type === 'thinking') {
+            const seg = endedThinkingSegments[thinkingSegIdx];
+            thinkingSegIdx++;
+            if (typeof seg === 'string' && seg.length > 0) {
+              // Prefer the longer content between segment and existing block
+              const existingThinking = typeof b.thinking === 'string' ? b.thinking : (typeof b.text === 'string' ? b.text : '');
+              const finalThinking = seg.length >= existingThinking.length ? seg : existingThinking;
+              newBlocks.push({ ...block, thinking: finalThinking, text: finalThinking } as ClaudeContentOrResultBlock);
+            } else {
               newBlocks.push(block as ClaudeContentOrResultBlock);
             }
+            continue;
+          }
+
+          if (b.type === 'text') {
+            const seg = endedTextSegments[textSegIdx];
+            textSegIdx++;
+            if (typeof seg === 'string' && seg.length > 0) {
+              const existingText = typeof b.text === 'string' ? b.text : '';
+              const finalText = seg.length >= existingText.length ? seg : existingText;
+              newBlocks.push({ ...block, text: finalText } as ClaudeContentOrResultBlock);
+            } else {
+              newBlocks.push(block as ClaudeContentOrResultBlock);
+            }
+            continue;
+          }
+
+          // Non-text, non-thinking blocks (tool_use, tool_result, etc.) — keep as-is
+          newBlocks.push(block as ClaudeContentOrResultBlock);
+        }
+
+        // Append any remaining segments that weren't matched to existing blocks
+        // (e.g., last few deltas that the throttle hadn't flushed yet)
+        for (let i = thinkingSegIdx; i < endedThinkingSegments.length; i++) {
+          const seg = endedThinkingSegments[i];
+          if (typeof seg === 'string' && seg.length > 0) {
+            newBlocks.push({ type: 'thinking' as const, thinking: seg, text: seg });
           }
         }
-
-        // Add thinking blocks from snapshotted segments
-        for (const seg of endedThinkingSegments) {
-          newBlocks.push({ type: 'thinking' as const, thinking: seg });
-        }
-
-        // Add text block from snapshotted segments
-        if (endedTextSegments.length > 0) {
-          newBlocks.push({ type: 'text' as const, text: endedTextSegments.join('') });
+        for (let i = textSegIdx; i < endedTextSegments.length; i++) {
+          const seg = endedTextSegments[i];
+          if (typeof seg === 'string' && seg.length > 0) {
+            newBlocks.push({ type: 'text' as const, text: seg });
+          }
         }
 
         const msg = existingRaw.message as Record<string, unknown> | undefined;
